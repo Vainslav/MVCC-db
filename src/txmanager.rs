@@ -7,7 +7,7 @@ pub struct Transaction {
     id: usize,
     isolation: IsolationLevel,
     state: TransactionState,
-    in_progress: BTreeSet<String>,
+    in_progress: BTreeSet<usize>,
     writes: BTreeSet<String>,
     reads: BTreeSet<String>,
 }
@@ -30,6 +30,10 @@ impl Transaction {
     }
 }
 
+pub enum TransactionProcessingError {
+    Value,
+}
+
 pub struct TransactionManager {
     transactions: BTreeMap<usize, Transaction>,
     next_transaction_id: usize,
@@ -37,22 +41,47 @@ pub struct TransactionManager {
 
 impl TransactionManager {
     pub fn new() -> TransactionManager {
-        TransactionManager { transactions: BTreeMap::new(), next_transaction_id: 1 }
+        TransactionManager {
+            transactions: BTreeMap::new(),
+            next_transaction_id: 1,
+        }
     }
 
     pub fn new_transaction(&mut self, isolation: IsolationLevel) -> usize {
         let tx_id = self.next_transaction_id;
         self.next_transaction_id += 1;
 
-        let tx = Transaction::new(tx_id, isolation);
+        let mut tx = Transaction::new(tx_id, isolation);
+        tx.in_progress = self.in_progress();
         self.transactions.insert(tx_id, tx);
         dbg!("started transaction {}", tx_id);
         tx_id
     }
 
-    pub fn complete_transaction(&mut self, id: usize, state: TransactionState) {
-        let tx = self.transactions.get_mut(&id).unwrap();
-        tx.state = state;
+    pub fn complete_transaction(
+        &mut self,
+        id: usize,
+        state: TransactionState,
+    ) -> Result<(), TransactionProcessingError> {
+        if state == TransactionState::InProgress {
+            panic!("Illegal state in complete_transaction")
+        }
+        {
+            let tx = self.transactions.get(&id).unwrap();
+            if tx.isolation == IsolationLevel::Serializable
+            && state == TransactionState::Committed
+            && self.has_conflict(tx, |t1, t2| -> bool {
+                !t1.writes.is_disjoint(&t2.reads) || !t1.reads.is_disjoint(&t2.writes)
+            })
+            {
+                return Err(TransactionProcessingError::Value);
+            }
+        }
+
+        let tx_mut = self.transactions.get_mut(&id).unwrap();;
+
+        tx_mut.state = state;
+        Ok(())
     }
 
     pub fn add_to_read_set(&mut self, id: usize, ids: Vec<String>) {
@@ -97,13 +126,70 @@ impl TransactionManager {
 
                 true
             }
-            IsolationLevel::RepeatableRead => todo!(),
-            IsolationLevel::Serializable => todo!(),
+            IsolationLevel::RepeatableRead | IsolationLevel::Serializable => {
+                if db_value.tx_start > tx.id {
+                    return false;
+                }
+
+                if tx.in_progress.contains(&db_value.tx_start) {
+                    return false;
+                }
+
+                if self.transactions.get(&db_value.tx_start).unwrap().state
+                    != TransactionState::Committed
+                    && db_value.tx_start != tx.id
+                {
+                    return false;
+                }
+
+                if db_value.tx_end == tx.id {
+                    return false;
+                }
+
+                if db_value.tx_end < tx.id
+                    && db_value.tx_end > 0
+                    && self.transactions.get(&db_value.tx_end).unwrap().state
+                        == TransactionState::Committed
+                    && tx.in_progress.contains(&db_value.tx_end)
+                {
+                    return false;
+                }
+
+                true
+            }
         }
     }
 
+    fn in_progress(&self) -> BTreeSet<usize> {
+        self.transactions
+            .keys()
+            .map(|key| -> usize { *key })
+            .collect()
+    }
+
+    fn has_conflict(
+        &self,
+        tx: &Transaction,
+        conflict_fn: fn(&Transaction, &Transaction) -> bool,
+    ) -> bool {
+        let mut iter = self.transactions.values();
+
+        let any_in_progress_has_conflict = tx.in_progress.iter().any(|t_id| -> bool {
+            let t = self.transactions.get(&t_id).unwrap();
+            conflict_fn(tx, t)
+        });
+
+        if any_in_progress_has_conflict {
+            return true;
+        }
+
+        let any_current_has_conflict = iter.any(|t| -> bool { conflict_fn(tx, t) });
+
+        any_current_has_conflict
+    }
+
     #[cfg(test)]
-    pub fn get_transaction(&mut self) -> &mut BTreeMap<usize, Transaction> {
+    pub fn get_transactions(&mut self) -> &mut BTreeMap<usize, Transaction> {
         &mut self.transactions
     }
 }

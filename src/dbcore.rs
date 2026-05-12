@@ -16,7 +16,7 @@ impl DbValue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum IsolationLevel {
     ReadUncommitted,
     ReadCommitted,

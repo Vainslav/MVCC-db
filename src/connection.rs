@@ -179,10 +179,9 @@ pub fn execute_command(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc};
+    use std::sync::Arc;
 
     use super::*;
 
@@ -193,8 +192,10 @@ mod tests {
 
         let mut con = Connection::new(store, tx_manager);
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
-        
-        assert!(execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).is_err());
+
+        assert!(
+            execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).is_err()
+        );
         assert!(con.cur_tx.is_some());
         assert_eq!(con.cur_tx.unwrap(), 1);
     }
@@ -206,14 +207,14 @@ mod tests {
 
         let mut con = Connection::new(store, tx_manager);
         assert!(execute_command(&mut con, Command::Commit).is_err());
-        
+
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
 
         assert!(execute_command(&mut con, Command::Commit).is_ok());
         assert!(con.cur_tx.is_none());
 
         let mut tx_m = con.get_tx_manager().write().unwrap();
-        let txs = tx_m.get_transaction();
+        let txs = tx_m.get_transactions();
         assert!(txs.len() == 1);
 
         let my_tx = txs.get(&1).unwrap();
@@ -227,14 +228,14 @@ mod tests {
 
         let mut con = Connection::new(store, tx_manager);
         assert!(execute_command(&mut con, Command::Commit).is_err());
-        
+
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
 
         assert!(execute_command(&mut con, Command::Abort).is_ok());
         assert!(con.cur_tx.is_none());
 
         let mut tx_m = con.get_tx_manager().write().unwrap();
-        let txs = tx_m.get_transaction();
+        let txs = tx_m.get_transactions();
         assert!(txs.len() == 1);
 
         let my_tx = txs.get(&1).unwrap();
