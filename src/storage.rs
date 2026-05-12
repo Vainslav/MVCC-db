@@ -12,4 +12,8 @@ impl Storage {
             data: HashMap::new(),
         }
     }
+
+    pub fn get_data(&self) -> &HashMap<String, Vec<DbValue>> {
+        &self.data
+    }
 }

@@ -69,16 +69,16 @@ impl TransactionManager {
         {
             let tx = self.transactions.get(&id).unwrap();
             if tx.isolation == IsolationLevel::Serializable
-            && state == TransactionState::Committed
-            && self.has_conflict(tx, |t1, t2| -> bool {
-                !t1.writes.is_disjoint(&t2.reads) || !t1.reads.is_disjoint(&t2.writes)
-            })
+                && state == TransactionState::Committed
+                && self.has_conflict(tx, |t1, t2| -> bool {
+                    !t1.writes.is_disjoint(&t2.reads) || !t1.reads.is_disjoint(&t2.writes)
+                })
             {
                 return Err(TransactionProcessingError::Value);
             }
         }
 
-        let tx_mut = self.transactions.get_mut(&id).unwrap();;
+        let tx_mut = self.transactions.get_mut(&id).unwrap();
 
         tx_mut.state = state;
         Ok(())
@@ -150,7 +150,7 @@ impl TransactionManager {
                     && db_value.tx_end > 0
                     && self.transactions.get(&db_value.tx_end).unwrap().state
                         == TransactionState::Committed
-                    && tx.in_progress.contains(&db_value.tx_end)
+                    && !tx.in_progress.contains(&db_value.tx_end)
                 {
                     return false;
                 }
@@ -162,8 +162,9 @@ impl TransactionManager {
 
     fn in_progress(&self) -> BTreeSet<usize> {
         self.transactions
-            .keys()
-            .map(|key| -> usize { *key })
+            .iter()
+            .filter(|(_, t)| -> bool { t.state == TransactionState::InProgress })
+            .map(|(id, _)| -> usize { *id })
             .collect()
     }
 
@@ -183,7 +184,7 @@ impl TransactionManager {
             return true;
         }
 
-        let any_current_has_conflict = iter.any(|t| -> bool { conflict_fn(tx, t) });
+        let any_current_has_conflict = iter.filter(|t| -> bool {t.id != tx.id}).any(|t| -> bool { conflict_fn(tx, t) });
 
         any_current_has_conflict
     }

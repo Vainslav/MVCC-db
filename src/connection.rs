@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use crate::{
     dbcore::{DbValue, IsolationLevel, TransactionState},
     storage::Storage,
-    txmanager::TransactionManager,
+    txmanager::{TransactionManager, TransactionProcessingError},
 };
 
 pub enum Command {
@@ -15,11 +15,22 @@ pub enum Command {
     Abort,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CommandExecutionError {
     Todo,
+    NotFound,
+    NoneVisible,
     NoActiveTransaction,
     TransactionAlreadyActive,
+    SerializationError
+}
+
+impl From<TransactionProcessingError> for CommandExecutionError {
+    fn from(value: TransactionProcessingError) -> Self {
+        match value {
+            TransactionProcessingError::Value => CommandExecutionError::SerializationError,
+        }
+    }
 }
 
 pub struct Connection {
@@ -57,7 +68,7 @@ impl Connection {
         }
 
         let mut tx_manager = self.tx_manager.write().unwrap();
-        tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Committed);
+        tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Committed)?;
         self.cur_tx = None;
 
         Ok(String::new())
@@ -87,7 +98,7 @@ impl Connection {
         let data = &mut storage_read.data;
 
         if let Some(values) = data.get_mut(&id) {
-            for val in values.iter_mut() {
+            for val in values.iter_mut().rev() {
                 if tx_manager_read.is_visible(cur_tx, &val) {
                     val.tx_end = cur_tx;
                 }
@@ -113,15 +124,15 @@ impl Connection {
         let data = &storage_read.data;
 
         let Some(values) = data.get(&id) else {
-            return Err(CommandExecutionError::Todo);
+            return Err(CommandExecutionError::NotFound);
         };
 
-        for val in values {
+        for val in values.iter().rev() {
             if tx_manager_read.is_visible(cur_tx, &val) {
                 return Ok(val.value.clone());
             }
         }
-        Err(CommandExecutionError::Todo)
+        Err(CommandExecutionError::NoneVisible)
     }
 
     pub fn delete(&mut self, id: String) -> Result<String, CommandExecutionError> {
@@ -137,7 +148,7 @@ impl Connection {
 
         if let Some(values) = data.get_mut(&id) {
             let mut found = false;
-            for val in values.iter_mut() {
+            for val in values.iter_mut().rev() {
                 if tx_manager_read.is_visible(cur_tx, &val) {
                     val.tx_end = cur_tx;
                     found = true;
@@ -147,10 +158,10 @@ impl Connection {
             if found {
                 Ok(String::new())
             } else {
-                Err(CommandExecutionError::Todo)
+                Err(CommandExecutionError::NoneVisible)
             }
         } else {
-            Err(CommandExecutionError::Todo)
+            Err(CommandExecutionError::NotFound)
         }
     }
 
@@ -180,7 +191,7 @@ pub fn execute_command(
 }
 
 #[cfg(test)]
-mod tests {
+mod command_tests {
     use std::sync::Arc;
 
     use super::*;
@@ -240,5 +251,218 @@ mod tests {
 
         let my_tx = txs.get(&1).unwrap();
         assert!(*my_tx.get_state() == TransactionState::Aborted);
+    }
+}
+
+#[cfg(test)]
+mod isolation_tests {
+
+    use super::*;
+
+    #[test]
+    fn test_read_uncommitted() {
+        let store = Arc::new(RwLock::new(Storage::new()));
+        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+
+        let mut con = Connection::new(store.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(store, tx_manager.clone());
+
+        execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
+        execute_command(&mut con2, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
+
+        execute_command(&mut con, Command::Put("123".to_string(), "123".to_string())).unwrap();
+        assert!(execute_command(&mut con2, Command::Get("123".to_string())).unwrap() == "123");
+        assert!(tx_manager.clone().write().unwrap().get_transactions().len() == 2);
+    }
+
+    #[test]
+    fn test_read_committed() {
+        let store = Arc::new(RwLock::new(Storage::new()));
+        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+
+        let mut con = Connection::new(store.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(store.clone(), tx_manager.clone());
+
+        execute_command(&mut con, Command::Begin(IsolationLevel::ReadCommitted)).unwrap();
+        execute_command(&mut con2, Command::Begin(IsolationLevel::ReadCommitted)).unwrap();
+
+        execute_command(&mut con, Command::Put("123".to_string(), "123".to_string())).unwrap();
+        assert_eq!(
+            execute_command(&mut con, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+
+        execute_command(&mut con, Command::Commit).unwrap();
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+
+        execute_command(&mut con, Command::Begin(IsolationLevel::ReadCommitted)).unwrap();
+
+        execute_command(
+            &mut con2,
+            Command::Put("123".to_string(), "234".to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string())).unwrap(),
+            "234"
+        );
+
+        assert_eq!(
+            execute_command(&mut con, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+
+        execute_command(&mut con2, Command::Abort).unwrap();
+        assert_eq!(
+            execute_command(&mut con, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+
+        execute_command(&mut con2, Command::Begin(IsolationLevel::ReadCommitted)).unwrap();
+        execute_command(&mut con2, Command::Delete("123".to_string())).unwrap();
+        assert_eq!(
+            execute_command(&mut con, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+
+        execute_command(&mut con2, Command::Commit).unwrap();
+        assert_eq!(
+            execute_command(&mut con, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+    }
+
+    #[test]
+    fn test_repeatable_read() {
+        let store = Arc::new(RwLock::new(Storage::new()));
+        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+
+        let mut con = Connection::new(store.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(store.clone(), tx_manager.clone());
+
+        execute_command(&mut con, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
+        execute_command(&mut con2, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
+
+        execute_command(&mut con, Command::Put("123".to_string(), "123".to_string())).unwrap();
+        assert_eq!(
+            execute_command(&mut con, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+
+        execute_command(&mut con, Command::Commit).unwrap();
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+
+        let mut con3 = Connection::new(store.clone(), tx_manager.clone());
+        execute_command(&mut con3, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
+        assert_eq!(
+            execute_command(&mut con3, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+
+        execute_command(
+            &mut con3,
+            Command::Put("123".to_string(), "234".to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            execute_command(&mut con3, Command::Get("123".to_string())).unwrap(),
+            "234"
+        );
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+
+        let mut con4 = Connection::new(store.clone(), tx_manager.clone());
+        execute_command(&mut con4, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
+        assert_eq!(
+            execute_command(&mut con4, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+
+        execute_command(&mut con4, Command::Delete("123".to_string())).unwrap();
+        assert_eq!(
+            execute_command(&mut con4, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+        dbg!(store.read().unwrap().get_data());
+        assert_eq!(
+            execute_command(&mut con3, Command::Get("123".to_string())).unwrap(),
+            "234"
+        );
+    }
+
+    #[test]
+    fn test_serializable() {
+        let store = Arc::new(RwLock::new(Storage::new()));
+        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+
+        let mut con = Connection::new(store.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(store.clone(), tx_manager.clone());
+        let mut con3 = Connection::new(store.clone(), tx_manager.clone());
+
+        execute_command(&mut con, Command::Begin(IsolationLevel::Serializable)).unwrap();
+        execute_command(&mut con2, Command::Begin(IsolationLevel::Serializable)).unwrap();
+        execute_command(&mut con3, Command::Begin(IsolationLevel::Serializable)).unwrap();
+
+        execute_command(&mut con, Command::Put("123".to_string(), "123".to_string())).unwrap();
+        assert_eq!(
+            execute_command(&mut con, Command::Get("123".to_string())).unwrap(),
+            "123"
+        );
+        execute_command(&mut con, Command::Commit).unwrap();
+
+        assert_eq!(
+            execute_command(&mut con2, Command::Get("123".to_string()))
+                .err()
+                .unwrap(),
+            CommandExecutionError::NoneVisible
+        );
+        assert_eq!(
+            execute_command(&mut con2, Command::Commit).err().unwrap(),
+            CommandExecutionError::SerializationError
+        );
+
+        execute_command(&mut con3, Command::Put("234".to_string(), "Pupupu".to_string())).unwrap();
+        execute_command(&mut con3, Command::Commit).unwrap();
     }
 }

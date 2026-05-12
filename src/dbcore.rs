@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+#[derive(Debug)]
 pub struct DbValue {
     pub tx_start: usize,
     pub tx_end: usize,
