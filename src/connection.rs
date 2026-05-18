@@ -17,7 +17,6 @@ pub enum Command {
 
 #[derive(Debug, PartialEq)]
 pub enum CommandExecutionError {
-    Todo,
     NotFound,
     NoneVisible,
     NoActiveTransaction,
@@ -28,7 +27,7 @@ pub enum CommandExecutionError {
 impl From<TransactionProcessingError> for CommandExecutionError {
     fn from(value: TransactionProcessingError) -> Self {
         match value {
-            TransactionProcessingError::Value => CommandExecutionError::SerializationError,
+            TransactionProcessingError::SerializableError => CommandExecutionError::SerializationError,
         }
     }
 }
@@ -80,7 +79,7 @@ impl Connection {
         }
 
         let mut tx_manager = self.tx_manager.write().unwrap();
-        tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted);
+        tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)?;
         self.cur_tx = None;
 
         Ok(String::new())

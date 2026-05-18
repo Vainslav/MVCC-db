@@ -31,7 +31,7 @@ impl Transaction {
 }
 
 pub enum TransactionProcessingError {
-    Value,
+    SerializableError,
 }
 
 pub struct TransactionManager {
@@ -74,7 +74,7 @@ impl TransactionManager {
                     !t1.writes.is_disjoint(&t2.reads) || !t1.reads.is_disjoint(&t2.writes)
                 })
             {
-                return Err(TransactionProcessingError::Value);
+                return Err(TransactionProcessingError::SerializableError);
             }
         }
 
@@ -173,7 +173,7 @@ impl TransactionManager {
         tx: &Transaction,
         conflict_fn: fn(&Transaction, &Transaction) -> bool,
     ) -> bool {
-        let mut iter = self.transactions.values();
+        let iter = self.transactions.values();
 
         let any_in_progress_has_conflict = tx.in_progress.iter().any(|t_id| -> bool {
             let t = self.transactions.get(&t_id).unwrap();
