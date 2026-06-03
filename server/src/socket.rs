@@ -30,7 +30,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             let conn_clone = conn.clone();
             let result = task::spawn_blocking(move || {
                 let mut guard = conn_clone.lock().unwrap();
-                process_command(&mut *guard, &text)
+                process_command(&mut guard, &text)
             })
             .await;
 
@@ -52,7 +52,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 }
 
 fn process_command(conn: &mut Connection, text: &str) -> String {
-    let parts: Vec<&str> = text.trim().split_whitespace().collect();
+    let parts: Vec<&str> = text.split_whitespace().collect();
     if parts.is_empty() {
         return "ERROR: empty command".to_string();
     }

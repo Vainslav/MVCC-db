@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::dbcore::DbValue;
 
+#[derive(Default)]
 pub struct Storage {
     pub data: HashMap<String, Vec<DbValue>>,
 }

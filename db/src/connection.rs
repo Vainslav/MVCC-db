@@ -71,17 +71,15 @@ impl Connection {
         let mut tx_manager = self.tx_manager.write().unwrap();
         let commit_result =
             tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Committed);
-        if let Err(err) = commit_result {
-            if err == TransactionProcessingError::SerializableError {
-                if tx_manager
-                    .complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)
-                    .is_err()
-                {
-                    panic!("Abort failed")
-                }
-                self.cur_tx = None;
-                return Err(CommandExecutionError::from(err));
+        if let Err(err) = commit_result && err == TransactionProcessingError::SerializableError {
+            if tx_manager
+                .complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)
+                .is_err()
+            {
+                panic!("Abort failed")
             }
+            self.cur_tx = None;
+            return Err(CommandExecutionError::from(err));
         }
         self.cur_tx = None;
 
@@ -118,7 +116,7 @@ impl Connection {
 
         if let Some(values) = data.get_mut(&id) {
             for val in values.iter_mut().rev() {
-                if tx_manager_read.is_visible(cur_tx, &val) {
+                if tx_manager_read.is_visible(cur_tx, val) {
                     val.tx_end = cur_tx;
                 }
             }
@@ -147,7 +145,7 @@ impl Connection {
         };
 
         for val in values.iter().rev() {
-            if tx_manager_read.is_visible(cur_tx, &val) {
+            if tx_manager_read.is_visible(cur_tx, val) {
                 return Ok(val.value.clone());
             }
         }
@@ -168,7 +166,7 @@ impl Connection {
         if let Some(values) = data.get_mut(&id) {
             let mut found = false;
             for val in values.iter_mut().rev() {
-                if tx_manager_read.is_visible(cur_tx, &val) {
+                if tx_manager_read.is_visible(cur_tx, val) {
                     val.tx_end = cur_tx;
                     found = true;
                 }

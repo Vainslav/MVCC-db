@@ -40,6 +40,12 @@ pub struct TransactionManager {
     next_transaction_id: usize,
 }
 
+impl Default for TransactionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransactionManager {
     pub fn new() -> TransactionManager {
         TransactionManager {
@@ -103,7 +109,7 @@ impl TransactionManager {
 
         match tx.isolation {
             IsolationLevel::ReadUncommitted => {
-                return db_value.tx_end == 0;
+                db_value.tx_end == 0
             }
             IsolationLevel::ReadCommitted => {
                 if db_value.tx_start != id
@@ -176,7 +182,7 @@ impl TransactionManager {
         let iter = self.transactions.values();
 
         let any_in_progress_has_conflict = tx.in_progress.iter().any(|t_id| -> bool {
-            let t = self.transactions.get(&t_id).unwrap();
+            let t = self.transactions.get(t_id).unwrap();
             conflict_fn(tx, t)
         });
 
@@ -184,12 +190,10 @@ impl TransactionManager {
             return true;
         }
 
-        let any_commited_has_conflict = iter
+        iter
             .filter(|t| -> bool { t.id > tx.id })
             .filter(|t| -> bool { t.state == TransactionState::Committed })
-            .any(|t| -> bool { conflict_fn(tx, t) });
-
-        any_commited_has_conflict
+            .any(|t| -> bool { conflict_fn(tx, t) })
     }
 
     #[cfg(test)]
