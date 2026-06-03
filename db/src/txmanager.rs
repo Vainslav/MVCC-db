@@ -108,9 +108,7 @@ impl TransactionManager {
         let tx = self.transactions.get(&id).unwrap();
 
         match tx.isolation {
-            IsolationLevel::ReadUncommitted => {
-                db_value.tx_end == 0
-            }
+            IsolationLevel::ReadUncommitted => db_value.tx_end == 0,
             IsolationLevel::ReadCommitted => {
                 if db_value.tx_start != id
                     && self.transactions.get(&db_value.tx_start).unwrap().state
@@ -190,8 +188,7 @@ impl TransactionManager {
             return true;
         }
 
-        iter
-            .filter(|t| -> bool { t.id > tx.id })
+        iter.filter(|t| -> bool { t.id > tx.id })
             .filter(|t| -> bool { t.state == TransactionState::Committed })
             .any(|t| -> bool { conflict_fn(tx, t) })
     }

@@ -71,7 +71,9 @@ impl Connection {
         let mut tx_manager = self.tx_manager.write().unwrap();
         let commit_result =
             tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Committed);
-        if let Err(err) = commit_result && err == TransactionProcessingError::SerializableError {
+        if let Err(err) = commit_result
+            && err == TransactionProcessingError::SerializableError
+        {
             if tx_manager
                 .complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)
                 .is_err()
