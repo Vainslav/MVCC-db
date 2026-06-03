@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
-use axum::extract::{
-    State, WebSocketUpgrade,
-    ws::{Message, WebSocket},
+use axum::{
+    extract::{
+        State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
+    response::IntoResponse,
 };
 use db::{Command, CommandExecutionError, Connection, IsolationLevel, execute_command};
 use futures::{SinkExt, StreamExt};
@@ -13,8 +16,11 @@ use std::sync::Mutex;
 
 use crate::AppState;
 
-pub async fn websocket_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) {
-    let _ = ws.on_upgrade(|socket| handle_socket(socket, state));
+pub async fn websocket_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {

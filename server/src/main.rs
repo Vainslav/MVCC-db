@@ -1,4 +1,4 @@
-use axum::{Router, routing::get};
+use axum::{Router, routing::any};
 use db::{Storage, TransactionManager};
 use std::sync::{Arc, RwLock};
 use tracing::info;
@@ -20,7 +20,7 @@ async fn main() {
     let state = Arc::new(AppState { store, tx_manager });
 
     let app = Router::new()
-        .route("/ws", get(socket::websocket_handler))
+        .route("/ws", any(socket::websocket_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
