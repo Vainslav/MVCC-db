@@ -173,9 +173,7 @@ impl TransactionManager {
         tx: &Transaction,
         conflict_fn: fn(&Transaction, &Transaction) -> bool,
     ) -> bool {
-        let iter = self
-            .transactions
-            .values();
+        let iter = self.transactions.values();
 
         let any_in_progress_has_conflict = tx.in_progress.iter().any(|t_id| -> bool {
             let t = self.transactions.get(&t_id).unwrap();

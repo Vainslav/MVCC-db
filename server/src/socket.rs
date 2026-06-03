@@ -37,12 +37,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             match result {
                 Ok(response) => {
                     if let Err(e) = sender.send(Message::Text(response.into())).await {
-                        error!("Ошибка отправки: {}", e);
+                        error!("Sending error: {}", e);
                         break;
                     }
                 }
                 Err(e) => {
-                    error!("Ошибка в spawn_blocking: {}", e);
+                    error!("Error in spawn_blocking: {}", e);
                     let _ = sender.send(Message::Text("ERROR: internal".into())).await;
                     break;
                 }
@@ -54,7 +54,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 fn process_command(conn: &mut Connection, text: &str) -> String {
     let parts: Vec<&str> = text.trim().split_whitespace().collect();
     if parts.is_empty() {
-        return "ERROR: пустая команда".to_string();
+        return "ERROR: empty command".to_string();
     }
 
     match parts[0].to_lowercase().as_str() {
@@ -65,7 +65,7 @@ fn process_command(conn: &mut Connection, text: &str) -> String {
                     "read_committed" => IsolationLevel::ReadCommitted,
                     "repeatable_read" => IsolationLevel::RepeatableRead,
                     "serializable" => IsolationLevel::Serializable,
-                    _ => return format!("ERROR: неизвестный уровень '{}'", parts[1]),
+                    _ => return format!("ERROR: unknown isolation level '{}'", parts[1]),
                 }
             } else {
                 IsolationLevel::ReadCommitted
@@ -118,6 +118,6 @@ fn process_command(conn: &mut Connection, text: &str) -> String {
                 Err(e) => format!("ERROR: {:?}", e),
             }
         }
-        _ => format!("ERROR: неизвестная команда '{}'", parts[0]),
+        _ => format!("ERROR: unknown command '{}'", parts[0]),
     }
 }

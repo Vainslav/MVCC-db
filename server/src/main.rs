@@ -26,6 +26,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
         .unwrap();
-    info!("Сервер запущен на http://127.0.0.1:3000");
+    info!("Server is running: http://127.0.0.1:3000");
     axum::serve(listener, app).await.unwrap();
 }
