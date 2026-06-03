@@ -21,13 +21,15 @@ pub enum CommandExecutionError {
     NoneVisible,
     NoActiveTransaction,
     TransactionAlreadyActive,
-    SerializationError
+    SerializationError,
 }
 
 impl From<TransactionProcessingError> for CommandExecutionError {
     fn from(value: TransactionProcessingError) -> Self {
         match value {
-            TransactionProcessingError::SerializableError => CommandExecutionError::SerializationError,
+            TransactionProcessingError::SerializableError => {
+                CommandExecutionError::SerializationError
+            }
         }
     }
 }
@@ -67,7 +69,20 @@ impl Connection {
         }
 
         let mut tx_manager = self.tx_manager.write().unwrap();
-        tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Committed)?;
+        let commit_result =
+            tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Committed);
+        if let Err(err) = commit_result {
+            if err == TransactionProcessingError::SerializableError {
+                if tx_manager
+                    .complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)
+                    .is_err()
+                {
+                    panic!("Abort failed")
+                }
+                self.cur_tx = None;
+                return Err(CommandExecutionError::from(err));
+            }
+        }
         self.cur_tx = None;
 
         Ok(String::new())
@@ -79,7 +94,12 @@ impl Connection {
         }
 
         let mut tx_manager = self.tx_manager.write().unwrap();
-        tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)?;
+        if tx_manager
+            .complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)
+            .is_err()
+        {
+            panic!("Abort failed")
+        }
         self.cur_tx = None;
 
         Ok(String::new())
@@ -423,7 +443,6 @@ mod isolation_tests {
                 .unwrap(),
             CommandExecutionError::NoneVisible
         );
-        dbg!(store.read().unwrap().get_data());
         assert_eq!(
             execute_command(&mut con3, Command::Get("123".to_string())).unwrap(),
             "234"
@@ -461,7 +480,11 @@ mod isolation_tests {
             CommandExecutionError::SerializationError
         );
 
-        execute_command(&mut con3, Command::Put("234".to_string(), "Pupupu".to_string())).unwrap();
+        execute_command(
+            &mut con3,
+            Command::Put("234".to_string(), "Pupupu".to_string()),
+        )
+        .unwrap();
         execute_command(&mut con3, Command::Commit).unwrap();
     }
 }

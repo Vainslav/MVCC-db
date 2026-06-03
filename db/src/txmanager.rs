@@ -30,6 +30,7 @@ impl Transaction {
     }
 }
 
+#[derive(PartialEq)]
 pub enum TransactionProcessingError {
     SerializableError,
 }
@@ -54,7 +55,6 @@ impl TransactionManager {
         let mut tx = Transaction::new(tx_id, isolation);
         tx.in_progress = self.in_progress();
         self.transactions.insert(tx_id, tx);
-        dbg!("started transaction {}", tx_id);
         tx_id
     }
 
@@ -173,7 +173,9 @@ impl TransactionManager {
         tx: &Transaction,
         conflict_fn: fn(&Transaction, &Transaction) -> bool,
     ) -> bool {
-        let iter = self.transactions.values();
+        let iter = self
+            .transactions
+            .values();
 
         let any_in_progress_has_conflict = tx.in_progress.iter().any(|t_id| -> bool {
             let t = self.transactions.get(&t_id).unwrap();
@@ -184,9 +186,12 @@ impl TransactionManager {
             return true;
         }
 
-        let any_current_has_conflict = iter.filter(|t| -> bool {t.id != tx.id}).any(|t| -> bool { conflict_fn(tx, t) });
+        let any_commited_has_conflict = iter
+            .filter(|t| -> bool { t.id > tx.id })
+            .filter(|t| -> bool { t.state == TransactionState::Committed })
+            .any(|t| -> bool { conflict_fn(tx, t) });
 
-        any_current_has_conflict
+        any_commited_has_conflict
     }
 
     #[cfg(test)]

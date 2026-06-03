@@ -1,4 +1,3 @@
-
 #[derive(Debug)]
 pub struct DbValue {
     pub tx_start: usize,
