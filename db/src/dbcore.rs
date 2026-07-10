@@ -1,7 +1,10 @@
+use crate::storage::RecordId;
+
 #[derive(Debug)]
 pub struct DbValue {
     pub tx_start: usize,
     pub tx_end: usize,
+    pub prev: RecordId,
     pub value: String,
 }
 
@@ -10,6 +13,7 @@ impl DbValue {
         DbValue {
             tx_start,
             tx_end,
+            prev: RecordId(0),
             value,
         }
     }
