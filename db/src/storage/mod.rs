@@ -1,4 +1,11 @@
-use crate::storage::RecordId;
+mod background;
+mod dashmap_cache;
+mod disk;
+mod page;
+mod page_cache;
+
+#[derive(Debug)]
+pub struct RecordId(pub u64);
 
 #[derive(Debug)]
 pub struct DbValue {
@@ -17,19 +24,4 @@ impl DbValue {
             value,
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum IsolationLevel {
-    ReadUncommitted,
-    ReadCommitted,
-    RepeatableRead,
-    Serializable,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TransactionState {
-    InProgress,
-    Aborted,
-    Committed,
 }
