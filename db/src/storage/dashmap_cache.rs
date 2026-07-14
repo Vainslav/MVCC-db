@@ -1,29 +1,11 @@
-use std::{ops::Deref, sync::Arc};
+use std::{sync::Arc};
 
 use dashmap::DashMap;
 
 use crate::storage::{
     page::{NUM_PAGES, Page},
-    page_cache::{PageCache, PageHandle},
+    page_cache::{PageCache},
 };
-
-struct PageHandleDashMap {
-    inner: Arc<Page>,
-}
-
-impl PageHandle for PageHandleDashMap {
-    fn page(&self) -> &Page {
-        &self.inner
-    }
-}
-
-impl Deref for PageHandleDashMap {
-    type Target = Page;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner.as_ref()
-    }
-}
 
 struct PageCacheDashMap {
     data: DashMap<usize, Arc<Page>>,
@@ -38,12 +20,12 @@ impl PageCacheDashMap {
 }
 
 impl PageCache for PageCacheDashMap {
-    type Handle = PageHandleDashMap;
+    type Handle = Arc<Page>;
 
     fn get(&self, id: &usize) -> Option<Self::Handle> {
         self.data
             .get(id)
-            .map(|val| PageHandleDashMap { inner: val.clone() })
+            .map(|val| val.clone())
     }
 
     fn put(&self, page: Page) {
@@ -53,6 +35,6 @@ impl PageCache for PageCacheDashMap {
     fn iter(&self) -> impl Iterator<Item = Self::Handle> {
         self.data
             .iter()
-            .map(|v| PageHandleDashMap { inner: v.clone() })
+            .map(|v| v.clone() )
     }
 }
