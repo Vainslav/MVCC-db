@@ -1,43 +1,54 @@
-```
-Page:
----------------------------------------------------
-| Slot[0]: {offset=XXX, key_len=xxx, val_len=xxx}  |
-| Slot[1]: {offset=YYY, ...}                       |
-| Slot[2]: {offset=ZZZ, ...}                       |
----------------------------------------------------
-|              Free Space                          |
----------------------------------------------------
-| Tuple[2] (...)                                   |  ← offset ZZZ
-| Tuple[1] (...)                                   |  ← offset YYY
-| Tuple[0] (xmin, xmax, key, value)                |  ← offset XXX
----------------------------------------------------
-```
+# Architecture
 
-Page write:
-
-```rust
-static PAGE_SIZE: usize = 4096;
-
-struct Page{
-    slot_and_tuple_pointer: AtomicUsize; // usize Upper 16 slot, bottom 16 tuple
-    data: SyncUnsafeCell<[u8; PAGE_SIZE]>
-}
-
-impl Page {
-    pub fn write(&self, key: String, value: String) {
-        slot_and_tuple_pointer ... // magic to move dependent on key and value
-
-        while !slot_and_tuple_pointer.cas().is_ok() {};
-        
-        data.write(key.to_utf8());
-        data.write(key.to_utf8());
-    }
-}
+I am going to use Hashed files With LSM inspired data files.
 
 ```
+Index file:
+ ---------------------------
+|[Header]                   |
+|Bucket_count: 32 bits      |
+|                           |
+|[Bucket page 0]            |
+|[Bucket page 1]            |
+|[Bucket page 2]            |
+|[Bucket page 3]            |
+|...                        |
+ ---------------------------
 
-^
-|
-Bad. Problem is: Flushing Wal file is marginaly slower than holding the lock on write. So any lock-free optimizations won't provide any benefits.
+Bucket page:
+ -----------------------------------------------------------------------------------------------------------------------------------------
+|next_overflow_page: 32 bits (0 if no overflow)                                                                                           |
+|entry_count: 16 bits                                                                                                                     |
+|                                                                                                                                         |
+|[Entry 0] {hash: 64 bits, key_len: 16 bits, key_bytes: [...], tid: (seg: 32 bits, offset: 64 bits)}                                      |
+|[Entry 1]                                                                                                                                |
+|[Entry 2]                                                                                                                                |
+|[Entry 3]                                                                                                                                |
+|...                                                                                                                                      |
+ -----------------------------------------------------------------------------------------------------------------------------------------
+```
 
-But i'm gonna do it anyway :)
+```
+Data file:
+ ---------------------------
+|[Header]                   |
+|Page count: 32 bits        |
+|                           |
+|[Data page 0]              |
+|[Data page 1]              |
+|[Data page 2]              |
+|[Data page 3]              |
+|...                        |
+ ---------------------------
+
+Data page:
+ -----------------------------------------------------------------------------------------------------------------------------------------
+|entry_count: 16 bits                                                                                                                     |
+|                                                                                                                                         |
+|[Record 0] {xmin: 32 bits, xmax: 32 bits, data_len: 16 bits, data: [...] prev_tid: (seg: 32 bits, offset: 64 bits)}                      |
+|[Record 1]                                                                                                                               |
+|[Record 2]                                                                                                                               |
+|[Record 3]                                                                                                                               |
+|...                                                                                                                                      |
+ -----------------------------------------------------------------------------------------------------------------------------------------
+```
