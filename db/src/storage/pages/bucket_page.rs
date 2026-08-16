@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::storage::{NewRecordId, pages::PAGE_SIZE};
+use crate::storage::{NewRecordId, pages::{PAGE_SIZE, PageType}};
 
 const OVERFLOW_RANGE: Range<usize> = 1..5;
 const ENTRIES_COUNT_RANGE: Range<usize> = 5..7;
@@ -132,4 +132,16 @@ impl<B: AsMut<[u8; PAGE_SIZE]> + AsRef<[u8; PAGE_SIZE]>> BucketPageView<B> {
 
         Ok(())
     }
+}
+
+pub fn get_bucket_page_init_bytes() -> [u8; PAGE_SIZE] {
+    let mut buf = [0; PAGE_SIZE]; // could be changed to uninit in the future, but will require some extra work
+    
+    // type
+    buf[0] = PageType::Bucket as u8;
+
+    // page header
+    buf[FREE_RANGE].copy_from_slice(&(ENTRIES_START as u16).to_le_bytes());
+
+    buf
 }
