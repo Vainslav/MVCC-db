@@ -1,6 +1,8 @@
+pub mod dashmap_cache;
+
 use std::ops::Deref;
 
-use crate::storage::page::Page;
+use crate::storage::pages::Page;
 
 pub trait PageCache {
     type Handle: Deref<Target = Page>;

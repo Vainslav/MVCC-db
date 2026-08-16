@@ -1,10 +1,24 @@
+pub mod bucket_page;
+pub mod data_page;
+pub mod page_cache;
+
 use std::sync::{
     RwLock,
     atomic::{AtomicBool, AtomicUsize},
 };
 
-pub static PAGE_SIZE: usize = 16 * 1024;
-pub static NUM_PAGES: usize = (100 * 1000 * 1024) / PAGE_SIZE;
+use crate::storage::RecordId;
+
+pub const PAGE_SIZE: usize = 16 * 1024;
+pub const NUM_PAGES: usize = (100 * 1000 * 1024) / PAGE_SIZE;
+
+const PAGE_TYPE_OFFSET: usize = 0;
+
+#[repr(u8)]
+pub enum PageType {
+    Bucket = 1,
+    Data = 2,
+}
 
 pub struct Page {
     pub id: usize,

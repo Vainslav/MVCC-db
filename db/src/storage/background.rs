@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::Ordering::Relaxed};
 
-use crate::storage::{page::Page, page_cache::PageCache};
+use crate::storage::pages::{Page, page_cache::PageCache};
 
 pub struct BackgroundWriter<T>
 where
@@ -18,18 +18,19 @@ impl<T: PageCache> BackgroundWriter<T> {
 }
 
 fn flush_page(page: &Page) {
-    loop {
-        let old = page.dirty.load(Relaxed);
-        if old {
-            let _lock = page.data.read().unwrap();
-            if page
-                .dirty
-                .compare_exchange(old, false, Relaxed, Relaxed)
-                .is_ok()
-            {
-                println!("Imaging this is writing to disk");
-                break;
-            }
+    let old = page.dirty.load(Relaxed);
+    if old {
+        let _lock = page.data.read().unwrap();
+        if page
+            .dirty
+            .compare_exchange(old, false, Relaxed, Relaxed)
+            .is_ok()
+        {
+            write_to_disk(page);
         }
     }
+}
+
+fn write_to_disk(page: &Page) {
+    println!("Imaging this is writing to disk");
 }
