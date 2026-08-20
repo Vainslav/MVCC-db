@@ -1,7 +1,7 @@
-use std::{fs::File};
+use std::fs::File;
 
-mod index;
 mod data;
+mod index;
 
 use crate::storage::pages::{Page, PageType};
 

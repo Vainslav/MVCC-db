@@ -27,11 +27,9 @@ pub struct Page {
     pub data: RwLock<[u8; PAGE_SIZE]>,
 }
 
-impl Page {
-    pub fn get_init_page_bytes(page_type: PageType) -> [u8; PAGE_SIZE] {
-        match page_type {
-            PageType::Bucket => get_bucket_page_init_bytes(),
-            PageType::Data => todo!(),
-        }
+pub fn get_init_page_bytes(page_type: PageType) -> [u8; PAGE_SIZE] {
+    match page_type {
+        PageType::Bucket => get_bucket_page_init_bytes(),
+        PageType::Data => todo!(),
     }
 }

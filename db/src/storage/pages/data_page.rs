@@ -14,9 +14,7 @@ impl<B: AsRef<[u8; PAGE_SIZE]>> DataPageView<B> {
     }
 }
 
-impl<B: AsMut<[u8; PAGE_SIZE]> + AsRef<[u8; PAGE_SIZE]>> DataPageView<B> {
-
-}
+impl<B: AsMut<[u8; PAGE_SIZE]> + AsRef<[u8; PAGE_SIZE]>> DataPageView<B> {}
 
 struct DataPageHeader {
     next_overflow_page: usize,
