@@ -13,7 +13,7 @@ struct IndexFileHeader {
     next_free: u64,
 }
 
-static INDEX_FILE_HEADER_SIZE: usize = std::mem::size_of::<u32>() + // bucket_count
+const INDEX_FILE_HEADER_SIZE: usize = std::mem::size_of::<u32>() + // bucket_count
     std::mem::size_of::<u32>() + // page_count
     std::mem::size_of::<u64>(); // next_free
 
