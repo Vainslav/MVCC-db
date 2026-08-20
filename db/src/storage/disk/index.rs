@@ -5,7 +5,10 @@ use std::{
     sync::RwLock,
 };
 
-use crate::storage::pages::{PAGE_SIZE, Page, PageType, get_init_page_bytes};
+use crate::{
+    storage::pages::{PAGE_SIZE, Page, PageType, get_init_page_bytes},
+    write_read_impl::{read_exact_at_impl, write_at_impl},
+};
 
 struct IndexFileHeader {
     bucket_count: u32,
@@ -65,13 +68,12 @@ impl IndexFile {
     }
 
     pub fn write_page(&self, page_id: u32, data: &[u8; PAGE_SIZE]) -> std::io::Result<()> {
-        self.file.write_all_at(data, page_offset(page_id as usize))
+        write_at_impl(&self.file, data, page_offset(page_id as usize))
     }
 
     pub fn read_page(&self, page_id: u32) -> std::io::Result<[u8; PAGE_SIZE]> {
-        let mut buf = [0u8; PAGE_SIZE];
-        self.file
-            .read_exact_at(&mut buf, page_offset(page_id as usize))?;
+        let mut buf = [0; PAGE_SIZE];
+        read_exact_at_impl(&self.file, &mut buf, page_offset(page_id as usize))?;
         Ok(buf)
     }
 }

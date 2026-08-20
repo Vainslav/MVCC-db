@@ -2,6 +2,7 @@ mod connection;
 mod storage;
 mod storage_old;
 mod transactions;
+mod write_read_impl;
 
 pub use connection::{Command, CommandExecutionError, Connection, execute_command};
 pub use storage::DbValue;
