@@ -24,7 +24,7 @@ impl PageCache for PageCacheDashMap {
     }
 
     fn put(&self, page: Page) {
-        self.data.insert(page.id, page.into());
+        self.data.insert(page.id as usize, page.into());
     }
 
     fn iter(&self) -> impl Iterator<Item = Self::Handle> {

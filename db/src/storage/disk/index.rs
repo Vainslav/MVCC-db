@@ -1,101 +1,110 @@
-use std::{
-    fs::{File, OpenOptions},
-    os::unix::fs::FileExt,
-    path::Path,
-    sync::RwLock,
-};
+use std::{fs::File, io, ops::Range};
 
 use crate::{
-    storage::pages::{PAGE_SIZE, Page, PageType, get_init_page_bytes},
+    storage::disk::FileHeader,
     write_read_impl::{read_exact_at_impl, write_at_impl},
 };
 
-struct IndexFileHeader {
-    bucket_count: u32,
-    page_count: u32,
-    next_free: u64,
-}
+const NEXT_FREE_RANGE: Range<usize> = 0..8;
+const BUCKET_COUNT_RANGE: Range<usize> = 8..12;
+const PAGE_COUNT_RANGE: Range<usize> = 12..16;
 
 const INDEX_FILE_HEADER_SIZE: usize = std::mem::size_of::<u32>() + // bucket_count
     std::mem::size_of::<u32>() + // page_count
     std::mem::size_of::<u64>(); // next_free
 
-pub struct IndexFile {
-    file: File,
-    header: RwLock<IndexFileHeader>,
+#[derive(Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct IndexFileHeader {
+    next_free: u64,
+    bucket_count: u32,
+    page_count: u32,
 }
 
-impl IndexFile {
-    pub fn open(path: &Path) -> std::io::Result<Self> {
-        let (file, header) = match File::create_new(path) {
-            Ok(f) => {
-                let header = IndexFileHeader {
-                    bucket_count: 0,
-                    page_count: 0,
-                    next_free: INDEX_FILE_HEADER_SIZE as u64,
-                };
-                write_header_to_file(&f, &header)?; // нужно реализовать симметрично read_header_from_file
-                (f, header)
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                let f = OpenOptions::new().read(true).write(true).open(path)?;
-                let header = read_header_from_file(&f)?;
-                (f, header)
-            }
-            Err(e) => return Err(e),
-        };
-        Ok(Self {
-            file,
-            header: header.into(),
-        })
-    }
-
-    pub fn alloc_bucket_page(&self) -> Page {
-        let mut header = self.header.write().unwrap();
-        let page_id = header.page_count as usize;
-        header.page_count += 1;
-        write_header_to_file(&self.file, &header).expect("write header failed");
-        let bytes = get_init_page_bytes(PageType::Bucket);
-        self.file
-            .write_at(&bytes, page_offset(page_id))
-            .expect("write failed");
-        Page {
-            id: page_id,
-            pin_count: 0.into(),
-            dirty: false.into(),
-            data: bytes.into(),
+impl FileHeader for IndexFileHeader {
+    fn new() -> Self {
+        IndexFileHeader {
+            next_free: INDEX_FILE_HEADER_SIZE as u64,
+            bucket_count: 0,
+            page_count: 0,
         }
     }
 
-    pub fn write_page(&self, page_id: u32, data: &[u8; PAGE_SIZE]) -> std::io::Result<()> {
-        write_at_impl(&self.file, data, page_offset(page_id as usize))
+    fn write_header_to_file(file: &File, header: &Self) -> io::Result<()> {
+        let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
+        buf[NEXT_FREE_RANGE].copy_from_slice(&header.next_free.to_le_bytes());
+        buf[BUCKET_COUNT_RANGE].copy_from_slice(&header.bucket_count.to_le_bytes());
+        buf[PAGE_COUNT_RANGE].copy_from_slice(&header.page_count.to_le_bytes());
+        write_at_impl(&file, &buf, 0)
     }
 
-    pub fn read_page(&self, page_id: u32) -> std::io::Result<[u8; PAGE_SIZE]> {
-        let mut buf = [0; PAGE_SIZE];
-        read_exact_at_impl(&self.file, &mut buf, page_offset(page_id as usize))?;
-        Ok(buf)
+    fn read_header_from_file(file: &File) -> io::Result<Self>
+    where
+        Self: Sized,
+    {
+        let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
+        read_exact_at_impl(&file, &mut buf, 0)?;
+        Ok(IndexFileHeader {
+            next_free: u64::from_le_bytes(buf[NEXT_FREE_RANGE].try_into().unwrap()),
+            bucket_count: u32::from_le_bytes(buf[BUCKET_COUNT_RANGE].try_into().unwrap()),
+            page_count: u32::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),
+        })
+    }
+
+    fn header_size() -> usize {
+        INDEX_FILE_HEADER_SIZE
+    }
+
+    fn page_count(&self) -> u32 {
+        self.page_count
+    }
+
+    fn inc_page_count(&mut self) -> u32 {
+        let prev = self.page_count;
+        self.page_count += 1;
+        prev
     }
 }
 
-fn read_header_from_file(file: &File) -> std::io::Result<IndexFileHeader> {
-    let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
-    file.read_exact_at(&mut buf, 0)?;
-    Ok(IndexFileHeader {
-        bucket_count: u32::from_le_bytes(buf[0..4].try_into().unwrap()),
-        page_count: u32::from_le_bytes(buf[4..8].try_into().unwrap()),
-        next_free: u64::from_le_bytes(buf[8..16].try_into().unwrap()),
-    })
-}
+#[cfg(test)]
+mod tests {
 
-fn write_header_to_file(file: &File, header: &IndexFileHeader) -> std::io::Result<()> {
-    let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
-    buf[0..4].copy_from_slice(&header.bucket_count.to_le_bytes());
-    buf[4..8].copy_from_slice(&header.page_count.to_le_bytes());
-    buf[8..16].copy_from_slice(&header.next_free.to_le_bytes());
-    file.write_all_at(&buf, 0)
-}
+    use std::io::{Read, Write};
 
-fn page_offset(page_id: usize) -> u64 {
-    INDEX_FILE_HEADER_SIZE as u64 + page_id as u64 * PAGE_SIZE as u64
+    use tempfile::NamedTempFile;
+
+    use super::*;
+
+    fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+        unsafe { ::core::slice::from_raw_parts(
+            (p as *const T) as *const u8,
+            ::core::mem::size_of::<T>(),
+        ) }
+    }
+
+    #[test]
+    fn test_read_header_from_file() {
+        let mut file = tempfile::tempfile().unwrap();
+
+        file.write(any_as_u8_slice(&IndexFileHeader::new()));
+
+        let header = IndexFileHeader::read_header_from_file(&file).unwrap();
+
+        assert_eq!(header, IndexFileHeader::new())
+    }
+
+    #[test]
+    fn test_write_header_to_file() {
+        let mut file = tempfile::tempfile().unwrap();
+
+        let header = IndexFileHeader::new();
+
+        IndexFileHeader::write_header_to_file(&file, &header).unwrap();
+
+        let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
+
+        file.read(&mut buf).unwrap();    
+
+        assert_eq!(any_as_u8_slice(&header), buf);
+    }
 }
