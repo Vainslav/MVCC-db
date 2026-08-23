@@ -8,6 +8,6 @@ name = "db"
 path = "src/lib.rs"
 
 [dependencies]
-dashmap = "6.2.1"
-scheduled-executor = "0.4.0"
-tempfile = "3.27.0"
+dashmap = "=6.2.1"
+scheduled-executor = "=0.4.0"
+tempfile = "=3.27.0"
