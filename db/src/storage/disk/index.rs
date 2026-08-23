@@ -76,10 +76,9 @@ mod tests {
     use super::*;
 
     fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-        unsafe { ::core::slice::from_raw_parts(
-            (p as *const T) as *const u8,
-            ::core::mem::size_of::<T>(),
-        ) }
+        unsafe {
+            ::core::slice::from_raw_parts((p as *const T) as *const u8, ::core::mem::size_of::<T>())
+        }
     }
 
     #[test]
@@ -103,7 +102,7 @@ mod tests {
 
         let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
 
-        file.read(&mut buf).unwrap();    
+        file.read(&mut buf).unwrap();
 
         assert_eq!(any_as_u8_slice(&header), buf);
     }

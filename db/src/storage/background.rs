@@ -1,15 +1,12 @@
 use std::sync::{Arc, atomic::Ordering::Relaxed};
 
-use crate::storage::pages::{Page, page_cache::PageCache};
+use crate::storage::pages::{Page, buffer_pool::ClockBufferPool};
 
-pub struct BackgroundWriter<T>
-where
-    T: PageCache,
-{
-    page_cache: Arc<T>,
+pub struct BackgroundWriter {
+    page_cache: Arc<ClockBufferPool>,
 }
 
-impl<T: PageCache> BackgroundWriter<T> {
+impl BackgroundWriter {
     pub fn run(&self) {
         self.page_cache.iter().for_each(|page| {
             flush_page(&page);

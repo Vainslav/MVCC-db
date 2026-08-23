@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crate::{
-    storage_old::Storage,
+    storage_old::StorageOld,
     transactions::{
         IsolationLevel, TransactionProcessingError, TransactionState, manager::TransactionManager,
     },
@@ -39,13 +39,13 @@ impl From<TransactionProcessingError> for CommandExecutionError {
 
 pub struct Connection {
     cur_tx: Option<usize>,
-    store: Arc<RwLock<Storage>>,
+    store: Arc<RwLock<StorageOld>>,
     tx_manager: Arc<RwLock<TransactionManager>>,
 }
 
 impl Connection {
     pub fn new(
-        store: Arc<RwLock<Storage>>,
+        store: Arc<RwLock<StorageOld>>,
         tx_manager: Arc<RwLock<TransactionManager>>,
     ) -> Connection {
         Connection {
@@ -220,7 +220,7 @@ mod command_tests {
 
     #[test]
     fn test_begin() {
-        let store = Arc::new(RwLock::new(Storage::new()));
+        let store = Arc::new(RwLock::new(StorageOld::new()));
         let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
         let mut con = Connection::new(store, tx_manager);
@@ -235,7 +235,7 @@ mod command_tests {
 
     #[test]
     fn test_commit() {
-        let store = Arc::new(RwLock::new(Storage::new()));
+        let store = Arc::new(RwLock::new(StorageOld::new()));
         let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
         let mut con = Connection::new(store, tx_manager);
@@ -256,7 +256,7 @@ mod command_tests {
 
     #[test]
     fn test_abort() {
-        let store = Arc::new(RwLock::new(Storage::new()));
+        let store = Arc::new(RwLock::new(StorageOld::new()));
         let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
         let mut con = Connection::new(store, tx_manager);
@@ -283,7 +283,7 @@ mod isolation_tests {
 
     #[test]
     fn test_read_uncommitted() {
-        let store = Arc::new(RwLock::new(Storage::new()));
+        let store = Arc::new(RwLock::new(StorageOld::new()));
         let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
         let mut con = Connection::new(store.clone(), tx_manager.clone());
@@ -299,7 +299,7 @@ mod isolation_tests {
 
     #[test]
     fn test_read_committed() {
-        let store = Arc::new(RwLock::new(Storage::new()));
+        let store = Arc::new(RwLock::new(StorageOld::new()));
         let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
         let mut con = Connection::new(store.clone(), tx_manager.clone());
@@ -374,7 +374,7 @@ mod isolation_tests {
 
     #[test]
     fn test_repeatable_read() {
-        let store = Arc::new(RwLock::new(Storage::new()));
+        let store = Arc::new(RwLock::new(StorageOld::new()));
         let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
         let mut con = Connection::new(store.clone(), tx_manager.clone());
@@ -454,7 +454,7 @@ mod isolation_tests {
 
     #[test]
     fn test_serializable() {
-        let store = Arc::new(RwLock::new(Storage::new()));
+        let store = Arc::new(RwLock::new(StorageOld::new()));
         let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
         let mut con = Connection::new(store.clone(), tx_manager.clone());

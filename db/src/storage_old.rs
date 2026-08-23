@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use crate::DbValue;
 
 #[derive(Debug)]
-pub struct Storage {
+pub struct StorageOld {
     pub data: HashMap<String, Vec<DbValue>>,
 }
 
-impl Storage {
-    pub fn new() -> Storage {
-        Storage {
+impl StorageOld {
+    pub fn new() -> StorageOld {
+        StorageOld {
             data: HashMap::new(),
         }
     }

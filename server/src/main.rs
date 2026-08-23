@@ -1,12 +1,12 @@
 use axum::{Router, routing::any};
-use db::{Storage, TransactionManager};
+use db::{StorageOld, TransactionManager};
 use std::sync::{Arc, RwLock};
 use tracing::info;
 
 mod socket;
 
 pub struct AppState {
-    store: Arc<RwLock<Storage>>,
+    store: Arc<RwLock<StorageOld>>,
     tx_manager: Arc<RwLock<TransactionManager>>,
 }
 
@@ -14,7 +14,7 @@ pub struct AppState {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let store = Arc::new(RwLock::new(Storage::new()));
+    let store = Arc::new(RwLock::new(StorageOld::new()));
     let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
 
     let state = Arc::new(AppState { store, tx_manager });

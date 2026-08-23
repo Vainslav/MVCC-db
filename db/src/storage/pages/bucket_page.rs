@@ -33,14 +33,16 @@ struct BucketEntryHeader {
 }
 
 const ENTRY_HEADER_SIZE: usize = std::mem::size_of::<u64>() + // hash
-    std::mem::size_of::<u64>() + // record_id
+    std::mem::size_of::<u16>() +
+    std::mem::size_of::<u16>() +
+    std::mem::size_of::<u16>() + // record_id
     std::mem::size_of::<u16>(); // key_len
 
 const ENTRY_PAGE_ID_OFFSET: usize = 8;
-const ENTRY_SEGMENT_ID_OFFSET: usize = 12;
-const ENTRY_PAGE_OFFSET_OFFSET: usize = 14;
-const ENTRY_KEY_LEN_OFFSET: usize = 16;
-const ENTRY_KEY_BYTES_OFFSET: usize = 18;
+const ENTRY_SEGMENT_ID_OFFSET: usize = 10;
+const ENTRY_PAGE_OFFSET_OFFSET: usize = 12;
+const ENTRY_KEY_LEN_OFFSET: usize = 14;
+const ENTRY_KEY_BYTES_OFFSET: usize = 16;
 
 impl BucketEntryHeader {
     pub fn from_compacted_bytes(buf: &[u8], offset_in_buf: usize) -> BucketEntryHeader {
@@ -49,7 +51,7 @@ impl BucketEntryHeader {
                 .try_into()
                 .unwrap(),
         );
-        let page_id = u32::from_le_bytes(
+        let page_id = u16::from_le_bytes(
             buf[offset_in_buf + ENTRY_PAGE_ID_OFFSET..offset_in_buf + ENTRY_SEGMENT_ID_OFFSET]
                 .try_into()
                 .unwrap(),
@@ -72,7 +74,7 @@ impl BucketEntryHeader {
 
         let record_id = NewRecordId {
             page_id,
-            segment_id,
+            file_id: segment_id,
             page_offset,
         };
 
@@ -129,7 +131,7 @@ impl<B: AsMut<[u8; PAGE_SIZE]> + AsRef<[u8; PAGE_SIZE]>> BucketPageView<B> {
         buf_mut[next_free + ENTRY_PAGE_ID_OFFSET..next_free + ENTRY_SEGMENT_ID_OFFSET]
             .copy_from_slice(&record_id.page_id.to_le_bytes());
         buf_mut[next_free + ENTRY_SEGMENT_ID_OFFSET..next_free + ENTRY_PAGE_OFFSET_OFFSET]
-            .copy_from_slice(&record_id.segment_id.to_le_bytes());
+            .copy_from_slice(&record_id.file_id.to_le_bytes());
         buf_mut[next_free + ENTRY_PAGE_OFFSET_OFFSET..next_free + ENTRY_KEY_LEN_OFFSET]
             .copy_from_slice(&record_id.page_offset.to_le_bytes());
         buf_mut[next_free + ENTRY_KEY_LEN_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET]

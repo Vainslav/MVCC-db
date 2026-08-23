@@ -11,7 +11,7 @@ use std::{
 use crate::{
     storage::{
         disk::{data::DataFileHeader, index::IndexFileHeader},
-        pages::{PAGE_SIZE, Page, PageType, get_init_page_bytes},
+        pages::{PAGE_SIZE, Page, PageId, PageType, get_init_page_bytes},
     },
     write_read_impl::{read_exact_at_impl, write_at_impl},
 };
@@ -26,11 +26,11 @@ impl DiskManager {
         todo!()
     }
 
-    pub fn read_page(&self, page_id: usize) -> Page {
+    pub fn read_page(&self, page_id: &PageId, page_type: PageType) -> io::Result<Page> {
         todo!()
     }
 
-    pub fn write_page(&mut self, page: &Page) {
+    pub fn write_page(&self, page: &Page) -> io::Result<()> {
         match page.get_page_type() {
             PageType::Bucket => todo!(),
             PageType::Data => todo!(),
@@ -71,18 +71,13 @@ impl<T: FileHeader> DiskFile<T> {
         })
     }
 
-    pub fn alloc_bucket_page(&self) -> Page {
+    pub fn alloc_bucket_page(&self) -> [u8; PAGE_SIZE] {
         let mut header = self.header.write().unwrap();
         let page_id = header.inc_page_count();
         T::write_header_to_file(&self.file, &header).expect("write header failed");
         let bytes = get_init_page_bytes(PageType::Bucket);
         write_at_impl(&self.file, &bytes, Self::page_offset(page_id)).expect("write failed");
-        Page {
-            id: page_id,
-            pin_count: 0.into(),
-            dirty: false.into(),
-            data: bytes.into(),
-        }
+        bytes
     }
 
     pub fn write_page(&self, page_id: u32, data: &[u8; PAGE_SIZE]) -> io::Result<()> {

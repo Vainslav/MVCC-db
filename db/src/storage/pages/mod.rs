@@ -1,6 +1,6 @@
 pub mod bucket_page;
+pub mod buffer_pool;
 pub mod data_page;
-pub mod page_cache;
 
 use std::sync::{
     RwLock,
@@ -20,8 +20,14 @@ pub enum PageType {
     Data = 2,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub struct PageId {
+    pub page_num: u16,
+    pub file_id: u16,
+}
+
 pub struct Page {
-    pub id: u32,
+    pub id: PageId,
     pub pin_count: AtomicUsize, // todo: Replace pin_count and dirty with one atomic
     pub dirty: AtomicBool, // todo: Think about adding io_inprogress flag, if there is a posibility for multiple page writers
     pub data: RwLock<[u8; PAGE_SIZE]>,
