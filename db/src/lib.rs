@@ -1,9 +1,9 @@
 mod connection;
+mod hash;
 mod storage;
 mod storage_old;
 mod transactions;
 mod write_read_impl;
-mod hash;
 
 pub use connection::{Command, CommandExecutionError, Connection, execute_command};
 pub use storage::DbValue;

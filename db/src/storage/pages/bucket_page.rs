@@ -1,7 +1,14 @@
-use std::{io, ops::{Deref, DerefMut, Range}};
+use std::{
+    io,
+    ops::{Deref, DerefMut, Range},
+};
 
 use crate::storage::{
-    NewRecordId, pages::{PAGE_SIZE, Page, PageId, PageType, buffer_pool::{ClockBufferPool, PageHandle}},
+    NewRecordId,
+    pages::{
+        PAGE_SIZE, Page, PageId, PageType,
+        buffer_pool::{ClockBufferPool, PageHandle},
+    },
 };
 
 const OVERFLOW_PAGE_ID_RANGE: Range<usize> = 1..3;
@@ -88,9 +95,8 @@ impl BucketEntryHeader {
 }
 
 impl<B> BucketPageView<B> {
-    
     pub fn new(buf: B) -> Self {
-        BucketPageView { buf}
+        BucketPageView { buf }
     }
 }
 
@@ -130,7 +136,7 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
             let header = BucketEntryHeader::from_compacted_bytes(buf_ref, offset);
             let key_bytes = &buf_ref
                 [offset + ENTRY_HEADER_SIZE..offset + ENTRY_HEADER_SIZE + header.key_len as usize];
-            
+
             if header.hash == target_hash && key_bytes == key {
                 return Some(offset);
             }
@@ -144,7 +150,10 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
         let next_page_id = u16::from_le_bytes(self.buf[OVERFLOW_PAGE_ID_RANGE].try_into().unwrap());
         let next_file_id = u16::from_le_bytes(self.buf[OVERFLOW_FILE_ID_RANGE].try_into().unwrap());
 
-        PageId { page_num: next_page_id, file_id: next_file_id }
+        PageId {
+            page_num: next_page_id,
+            file_id: next_file_id,
+        }
     }
 }
 
@@ -194,12 +203,15 @@ pub fn get_bucket_page_init_bytes() -> [u8; PAGE_SIZE] {
 
 pub struct BucketChainIter<'a> {
     pool: &'a ClockBufferPool,
-    next_page: Option<PageId>
+    next_page: Option<PageId>,
 }
 
 impl<'a> BucketChainIter<'a> {
     pub fn new(pool: &'a ClockBufferPool, page_id: PageId) -> Self {
-        Self { pool, next_page: Some(page_id) }
+        Self {
+            pool,
+            next_page: Some(page_id),
+        }
     }
 }
 
@@ -222,7 +234,11 @@ impl<'a> Iterator for BucketChainIter<'a> {
             BucketPageView::new(&*buf).next_overflow_page()
         };
 
-        self.next_page = if overflow.file_id == 0 && overflow.page_num == 0 { None } else { Some(overflow) };
+        self.next_page = if overflow.file_id == 0 && overflow.page_num == 0 {
+            None
+        } else {
+            Some(overflow)
+        };
 
         Some(Ok(handle))
     }

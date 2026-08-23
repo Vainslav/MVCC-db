@@ -1,6 +1,17 @@
-use std::{hash::{DefaultHasher, Hash}, io, sync::Arc};
+use std::{
+    hash::{DefaultHasher, Hash},
+    io,
+    sync::Arc,
+};
 
-use crate::{hash::fnv1a, storage::pages::{PageId, bucket_page::{BucketChainIter, BucketPageView}, buffer_pool::ClockBufferPool}};
+use crate::{
+    hash::fnv1a,
+    storage::pages::{
+        PageId,
+        bucket_page::{BucketChainIter, BucketPageView},
+        buffer_pool::ClockBufferPool,
+    },
+};
 
 mod background;
 mod disk;
@@ -50,7 +61,10 @@ impl Storage {
         let hash = fnv1a(bytes);
         let bucket_number = (hash % 32) as u16;
 
-        let page_id = PageId { page_num: bucket_number, file_id: 0 };
+        let page_id = PageId {
+            page_num: bucket_number,
+            file_id: 0,
+        };
 
         for page_result in BucketChainIter::new(&self.page_cache, page_id) {
             let page_handle = page_result?;
@@ -61,7 +75,7 @@ impl Storage {
             let record = bucket.find_entry(bytes, hash);
 
             if record.is_some() {
-                return Ok(record)
+                return Ok(record);
             }
         }
 
