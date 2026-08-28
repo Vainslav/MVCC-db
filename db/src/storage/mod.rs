@@ -1,6 +1,7 @@
 use std::{
     hash::{DefaultHasher, Hash},
     io,
+    ops::Range,
     sync::Arc,
 };
 
@@ -26,6 +27,37 @@ pub struct NewRecordId {
     pub page_id: u16,
     pub file_id: u16,
     pub page_offset: u16,
+}
+
+const RECORD_ID_SIZE: usize =
+    std::mem::size_of::<u16>() + std::mem::size_of::<u16>() + std::mem::size_of::<u16>();
+
+const PAGE_ID_RANGE: Range<usize> = 0..2;
+const FILE_ID_RANGE: Range<usize> = 2..4;
+const PAGE_OFFSET_RANGE: Range<usize> = 4..6;
+
+impl NewRecordId {
+    fn from_compacted_bytes(buf: &[u8; RECORD_ID_SIZE]) -> NewRecordId {
+        let page_id = u16::from_le_bytes(buf[PAGE_ID_RANGE].try_into().unwrap());
+        let file_id = u16::from_le_bytes(buf[FILE_ID_RANGE].try_into().unwrap());
+        let page_offset = u16::from_le_bytes(buf[PAGE_OFFSET_RANGE].try_into().unwrap());
+
+        NewRecordId {
+            page_id,
+            file_id,
+            page_offset,
+        }
+    }
+
+    fn to_le_bytes(&self) -> [u8; RECORD_ID_SIZE] {
+        let mut buf = [0; RECORD_ID_SIZE];
+
+        buf[PAGE_ID_RANGE].copy_from_slice(&self.page_id.to_le_bytes());
+        buf[FILE_ID_RANGE].copy_from_slice(&self.file_id.to_le_bytes());
+        buf[PAGE_OFFSET_RANGE].copy_from_slice(&self.page_offset.to_le_bytes());
+
+        buf
+    }
 }
 
 #[derive(Debug)]
