@@ -1,8 +1,4 @@
-use std::{
-    io,
-    ops::Range,
-    sync::Arc,
-};
+use std::{io, ops::Range, sync::Arc};
 
 use crate::{
     hash::fnv1a,

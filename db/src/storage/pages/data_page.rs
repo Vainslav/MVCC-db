@@ -1,6 +1,4 @@
-use std::
-    ops::{Deref, DerefMut, Range}
-;
+use std::ops::{Deref, DerefMut, Range};
 
 use crate::storage::{NewRecordId, RECORD_ID_SIZE, Record, pages::PAGE_SIZE};
 
