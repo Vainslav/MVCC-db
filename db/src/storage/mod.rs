@@ -59,6 +59,21 @@ impl NewRecordId {
 }
 
 #[derive(Debug)]
+pub struct KeyId {
+    pub page_id: usize,
+    pub file_id: usize,
+    pub page_offset: usize,
+}
+
+#[derive(Debug)]
+pub struct Record {
+    pub xmin: u32,
+    pub xmax: u32,
+    pub prev: NewRecordId,
+    pub value: String,
+}
+
+#[derive(Debug)]
 pub struct DbValue {
     pub tx_start: usize,
     pub tx_end: usize,

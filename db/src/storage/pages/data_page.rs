@@ -1,9 +1,8 @@
-use std::{
-    io,
-    ops::{Deref, DerefMut, Range},
-};
+use std::
+    ops::{Deref, DerefMut, Range}
+;
 
-use crate::storage::{NewRecordId, RECORD_ID_SIZE, RecordId, pages::PAGE_SIZE};
+use crate::storage::{NewRecordId, RECORD_ID_SIZE, Record, pages::PAGE_SIZE};
 
 pub struct DataPageView<B> {
     buf: B,
@@ -15,7 +14,7 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
     }
 
     pub fn get_record(&self, page_offset: usize) -> Record {
-        let disk_record = DiskRecord::from_compacted_bytes(
+        let disk_record = DataPageRecord::from_compacted_bytes(
             self.buf[page_offset..page_offset + RECORD_SIZE]
                 .try_into()
                 .unwrap(),
@@ -27,7 +26,7 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
 
         let str = String::from_utf8(string_bytes).unwrap();
 
-        Record::from_disk_record_and_string(disk_record, str)
+        Record::from_data_page_record_and_string(disk_record, str)
     }
 }
 
@@ -41,25 +40,18 @@ struct DataPageHeader {
     entry_count: u16,
 }
 
-pub struct Record {
-    pub xmin: u32,
-    pub xmax: u32,
-    pub prev: NewRecordId,
-    pub data: String,
-}
-
 impl Record {
-    fn from_disk_record_and_string(disk_record: DiskRecord, str: String) -> Self {
+    fn from_data_page_record_and_string(disk_record: DataPageRecord, str: String) -> Self {
         Record {
             xmin: disk_record.xmin,
             xmax: disk_record.xmax,
             prev: disk_record.prev,
-            data: str,
+            value: str,
         }
     }
 }
 
-struct DiskRecord {
+struct DataPageRecord {
     pub xmin: u32,
     pub xmax: u32,
     pub prev: NewRecordId,
@@ -76,14 +68,14 @@ const XMAX_RANGE: Range<usize> = 4..8;
 const PREV_RECORD_RANGE: Range<usize> = 8..8 + RECORD_ID_SIZE;
 const DATA_LEN_RANGE: Range<usize> = 8 + RECORD_ID_SIZE..10 + RECORD_ID_SIZE;
 
-impl DiskRecord {
+impl DataPageRecord {
     fn from_compacted_bytes(buf: &[u8; RECORD_SIZE]) -> Self {
         let xmin = u32::from_le_bytes(buf[XMIN_RANGE].try_into().unwrap());
         let xmax = u32::from_le_bytes(buf[XMAX_RANGE].try_into().unwrap());
         let prev = NewRecordId::from_compacted_bytes(buf[PREV_RECORD_RANGE].try_into().unwrap());
         let data_len = u16::from_le_bytes(buf[XMAX_RANGE].try_into().unwrap());
 
-        DiskRecord {
+        DataPageRecord {
             xmin,
             xmax,
             prev,
@@ -105,8 +97,8 @@ fn write_record_to_buf(buf: &mut [u8; PAGE_SIZE], offset: usize, record: Record)
     buf[xmin_range_updated].copy_from_slice(&record.xmin.to_le_bytes());
     buf[xmax_range_updated].copy_from_slice(&record.xmax.to_le_bytes());
     buf[prev_range_updated].copy_from_slice(&record.prev.to_le_bytes());
-    buf[data_len_range_updated].copy_from_slice(&(record.data.len() as u16).to_le_bytes());
+    buf[data_len_range_updated].copy_from_slice(&(record.value.len() as u16).to_le_bytes());
 
-    buf[DATA_LEN_RANGE.last().unwrap()..DATA_LEN_RANGE.last().unwrap() + record.data.len()]
-        .copy_from_slice(record.data.as_bytes());
+    buf[DATA_LEN_RANGE.last().unwrap()..DATA_LEN_RANGE.last().unwrap() + record.value.len()]
+        .copy_from_slice(record.value.as_bytes());
 }
