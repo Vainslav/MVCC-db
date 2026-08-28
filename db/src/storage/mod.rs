@@ -1,5 +1,4 @@
 use std::{
-    hash::{DefaultHasher, Hash},
     io,
     ops::Range,
     sync::Arc,
@@ -22,7 +21,6 @@ mod pages;
 pub struct RecordId(pub u64);
 
 #[derive(Debug)]
-#[repr(C)]
 pub struct NewRecordId {
     pub page_id: u16,
     pub file_id: u16,

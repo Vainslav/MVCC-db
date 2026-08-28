@@ -21,7 +21,6 @@ pub struct BucketPageView<B> {
     buf: B,
 }
 
-#[repr(C)]
 pub struct BucketPageHeader {
     next_overflow_page: PageId,
     entry_count: u16,
@@ -33,7 +32,6 @@ pub const BUCKET_PAGE_HEADER_SIZE: usize = std::mem::size_of::<u16>() + // next_
     std::mem::size_of::<u16>() + // entry_count
     std::mem::size_of::<u16>(); // next_free
 
-#[repr(C)]
 struct BucketEntryHeader {
     hash: u64,
     record_id: NewRecordId,

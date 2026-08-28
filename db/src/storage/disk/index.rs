@@ -14,7 +14,6 @@ const INDEX_FILE_HEADER_SIZE: usize = std::mem::size_of::<u32>() + // bucket_cou
     std::mem::size_of::<u64>(); // next_free
 
 #[derive(Debug, PartialEq, Eq)]
-#[repr(C)]
 pub struct IndexFileHeader {
     next_free: u64,
     bucket_count: u32,
