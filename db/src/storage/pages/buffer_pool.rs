@@ -77,6 +77,33 @@ impl ClockBufferPool {
         })
     }
 
+    pub fn next_writable(&self, page_type: PageType) -> io::Result<PageHandle> {
+        let page = self.disk_manager.next_writable(page_type)?;
+
+        let id = page.id.clone();
+
+        let victim_idx = self.find_victim_frame().expect("buffer pool exhausted");
+        let mut slot = self.frames[victim_idx].slot.write().unwrap();
+        if let Some(old) = slot.take() {
+            if old.dirty.load(Ordering::Acquire) {
+                self.disk_manager.write_page(&old)?;
+            }
+            self.index.remove(&old.id);
+        }
+        let arc = Arc::new(page);
+
+        arc.pin_count.fetch_add(1, Ordering::AcqRel);
+        *slot = Some(arc.clone());
+        drop(slot);
+
+        self.frames[victim_idx]
+            .ref_bit
+            .store(true, Ordering::Release);
+        self.index.insert(id, victim_idx);
+
+        Ok(PageHandle(arc))
+    }
+
     fn find_victim_frame(&self) -> Option<usize> {
         let n = self.frames.len();
         for _ in 0..(2 * n) {

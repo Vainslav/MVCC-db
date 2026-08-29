@@ -20,7 +20,7 @@ pub enum PageType {
     Data = 2,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct PageId {
     pub page_num: u16,
     pub file_id: u16,

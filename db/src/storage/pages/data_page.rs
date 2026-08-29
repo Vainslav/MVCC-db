@@ -48,7 +48,7 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
 }
 
 impl<B: DerefMut<Target = [u8; PAGE_SIZE]> + Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
-    pub fn append_record(&mut self, record: Record) -> Result<(), ()> {
+    pub fn append_record(&mut self, record: Record) -> Result<u16, ()> {
         let entry_count = self.entry_count();
         let next_free = self.next_free();
 
@@ -63,7 +63,7 @@ impl<B: DerefMut<Target = [u8; PAGE_SIZE]> + Deref<Target = [u8; PAGE_SIZE]>> Da
         self.write_entry_count(entry_count + 1);
         self.write_next_free((next_free + needed) as u16);
 
-        Ok(())
+        Ok(next_free as u16)
     }
 
     pub fn change_xmax(&mut self, offset: usize, new_xmax: u32) {

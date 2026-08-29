@@ -30,8 +30,11 @@ impl DiskManager {
         todo!()
     }
 
-    pub fn get_cur_data_writing_page(&self) -> io::Result<Page> {
-        let data = self.data_files.last().unwrap().last_page()?;
+    pub fn next_writable(&self, page_type: PageType) -> io::Result<Page> {
+        let data = match page_type {
+            PageType::Bucket => self.index_files.last().unwrap().last_page()?,
+            PageType::Data => self.data_files.last().unwrap().last_page()?,
+        };
 
         let page_id = PageId {
             page_num: data.0,

@@ -13,7 +13,7 @@ mod pages;
 #[derive(Debug)]
 pub struct RecordId(pub u64);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct NewRecordId {
     pub page_id: u16,
     pub file_id: u16,
@@ -144,7 +144,55 @@ impl Storage {
         Ok(())
     }
 
-    pub fn insert(&self, key: &str, value: Record) -> io::Result<NewRecordId> {
-        todo!()
+    pub fn insert(&self, key: &str, record: Record) -> io::Result<NewRecordId> {
+        let key_bytes = key.as_bytes();
+        let hash = fnv1a(key_bytes);
+        let bucket_number = (hash % 32) as u16;
+
+        let page_id = PageId {
+            page_num: bucket_number,
+            file_id: 0,
+        };
+
+        let mut optional_key_page_id = None;
+
+        for page_result in BucketChainIter::new(&self.page_cache, page_id){
+            let page_handle = page_result?;
+            let read_guard = page_handle.data.read().unwrap();
+
+            let bucket = BucketPageView::new(read_guard);
+
+            let key = bucket.find_key(key_bytes, hash);
+
+            if key.is_some() {
+                optional_key_page_id = Some((page_handle.id.clone(), key.unwrap()));
+                break;
+            }
+        }
+
+        let writable_bucket = if let Some((key_page_id, _)) = optional_key_page_id {
+            self.page_cache.fetch(key_page_id, PageType::Bucket)?
+        } else {
+            self.page_cache.next_writable(PageType::Bucket)?
+        };
+        let writable_data = self.page_cache.next_writable(PageType::Data)?;
+
+        let bucket_write_guard = writable_bucket.data.write().unwrap();
+        let data_write_guard = writable_data.data.write().unwrap();
+
+        let mut bucket_page = BucketPageView::new(bucket_write_guard);
+        let mut data_page = DataPageView::new(data_write_guard);
+
+        let offset = data_page.append_record(record).expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSs");
+
+        let record_id = NewRecordId { page_id: writable_data.id.page_num, file_id: writable_data.id.file_id, page_offset: offset };
+
+        if let Some((_, offset)) = optional_key_page_id {
+            bucket_page.change_entry_pointer(offset, record_id);
+        } else {
+            bucket_page.append_entry(key_bytes, hash, record_id).expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSs");
+        }
+
+        Ok(record_id)
     }
 }
