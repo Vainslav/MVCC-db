@@ -1,11 +1,8 @@
 use std::{io, ops::Range, sync::{Arc, atomic::AtomicU64}};
 
 use crate::{
-    hash::fnv1a,
-    storage::pages::{
-        PageId,
-        bucket_page::{BucketChainIter, BucketPageView},
-        buffer_pool::ClockBufferPool,
+    hash::fnv1a, storage::pages::{
+        PageId, PageType, bucket_page::{BucketChainIter, BucketPageView}, buffer_pool::ClockBufferPool, data_page::DataPageView,
     },
 };
 
@@ -124,11 +121,27 @@ impl Storage {
     }
 
     pub fn get_value_by_record_id(&self, record_id: &NewRecordId) -> io::Result<Option<Record>> {
-        todo!()
+        let NewRecordId { page_id, file_id, page_offset } = *record_id;
+
+        let page = self.page_cache.fetch(PageId { page_num: page_id, file_id }, PageType::Data)?;
+        let read_guard = page.data.read().unwrap();
+
+        let data_page = DataPageView::new(read_guard);
+
+        Ok(Some(data_page.get_record(page_offset as usize)))
     }
 
-    pub fn set_tx_end(&self, record_id: &NewRecordId, tx_end: u32) -> io::Result<()> {
-        todo!()
+    pub fn delete_record(&self, record_id: &NewRecordId, xmax: u32) -> io::Result<()> {
+        let NewRecordId { page_id, file_id, page_offset } = *record_id;
+        
+        let page = self.page_cache.fetch(PageId { page_num: page_id, file_id }, PageType::Data)?;
+        let write_guard = page.data.write().unwrap();
+
+        let mut data_page = DataPageView::new(write_guard);
+
+        data_page.change_xmax(page_offset as usize, xmax);
+
+        Ok(())
     }
 
     pub fn insert(&self, key: &str, value: Record) -> io::Result<NewRecordId> {

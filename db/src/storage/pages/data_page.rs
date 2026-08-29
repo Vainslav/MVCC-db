@@ -14,6 +14,13 @@ struct DataPageHeader {
 const ENTRY_COUNT_RANGE: Range<usize> = 1..3;
 const NEXT_FREE_RANGE: Range<usize> = 3..5;
 
+impl<B> DataPageView<B> {
+    
+    pub fn new(buf: B) -> Self {
+        DataPageView { buf }
+    }
+}
+
 impl<B: Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
     pub fn entry_count(&self) -> u16 {
         u16::from_le_bytes(self.buf.as_ref()[ENTRY_COUNT_RANGE].try_into().unwrap())
@@ -57,6 +64,13 @@ impl<B: DerefMut<Target = [u8; PAGE_SIZE]> + Deref<Target = [u8; PAGE_SIZE]>> Da
         self.write_next_free((next_free + needed) as u16);
 
         Ok(())
+    }
+
+    pub fn change_xmax(&mut self, offset: usize, new_xmax: u32) {
+        let xmax_range_updated: Range<usize> =
+            XMAX_RANGE.min().unwrap() + offset..XMAX_RANGE.last().unwrap() + offset;
+        
+        self.buf[xmax_range_updated].copy_from_slice(&new_xmax.to_le_bytes());
     }
 
     fn write_entry_count(&mut self, new_entry_count: u16) {
