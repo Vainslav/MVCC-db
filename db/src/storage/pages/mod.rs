@@ -15,6 +15,7 @@ pub const NUM_PAGES: usize = (100 * 1000 * 1024) / PAGE_SIZE;
 const PAGE_TYPE_OFFSET: usize = 0;
 
 #[repr(u8)]
+#[derive(Clone, Copy, Debug)]
 pub enum PageType {
     Bucket = 1,
     Data = 2,

@@ -159,7 +159,7 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
     }
 }
 
-impl<B: DerefMut<Target = [u8; PAGE_SIZE]> + Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
+impl<B: DerefMut<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
     pub fn append_entry(&mut self, key: &[u8], hash: u64, record_id: NewRecordId) -> Result<(), ()> {
         let entry_count = self.entry_count();
         let needed = ENTRY_HEADER_SIZE + key.len();
