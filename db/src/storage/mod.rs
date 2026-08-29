@@ -123,15 +123,15 @@ impl Storage {
         Ok(None)
     }
 
-    pub fn get_value_by_record_id(&self, record_id: &RecordId) -> io::Result<Option<DbValue>> {
+    pub fn get_value_by_record_id(&self, record_id: &NewRecordId) -> io::Result<Option<Record>> {
         todo!()
     }
 
-    pub fn set_tx_end(&self, record_id: &RecordId, tx_end: u32) -> io::Result<()> {
+    pub fn set_tx_end(&self, record_id: &NewRecordId, tx_end: u32) -> io::Result<()> {
         todo!()
     }
 
-    pub fn insert(&self, key: &str, value: DbValue) -> io::Result<RecordId> {
+    pub fn insert(&self, key: &str, value: Record) -> io::Result<NewRecordId> {
         todo!()
     }
 }
