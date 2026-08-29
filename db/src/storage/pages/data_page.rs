@@ -6,9 +6,17 @@ pub struct DataPageView<B> {
     buf: B,
 }
 
+struct DataPageHeader {
+    entry_count: u16,
+    next_free: u16
+}
+
+const ENTRY_COUNT_RANGE: Range<usize> = 1..3;
+const NEXT_FREE_RANGE: Range<usize> = 3..5;
+
 impl<B: Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
     pub fn entry_count(&self) -> u16 {
-        u16::from_le_bytes(self.buf.as_ref()[5..7].try_into().unwrap())
+        u16::from_le_bytes(self.buf.as_ref()[ENTRY_COUNT_RANGE].try_into().unwrap())
     }
 
     pub fn get_record(&self, page_offset: usize) -> Record {
@@ -26,16 +34,38 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
 
         Record::from_data_page_record_and_string(disk_record, str)
     }
-}
 
-impl<B: DerefMut<Target = [u8; PAGE_SIZE]> + Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
-    pub fn write_record(&mut self, offset: usize, record: Record) {
-        write_record_to_buf(&mut self.buf, offset, record);
+    fn next_free(&self) -> usize {
+        u16::from_le_bytes(self.buf[NEXT_FREE_RANGE].try_into().expect("Should be 2 bytes")) as usize
     }
 }
 
-struct DataPageHeader {
-    entry_count: u16,
+impl<B: DerefMut<Target = [u8; PAGE_SIZE]> + Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
+    pub fn append_record(&mut self, record: Record) -> Result<(), ()> {
+        let entry_count = self.entry_count();
+        let next_free = self.next_free();
+
+        let needed = record_len(&record);
+        
+        if next_free + needed > PAGE_SIZE {
+            return Err(())
+        }
+
+        write_record_to_buf(&mut self.buf, next_free, record);
+
+        self.write_entry_count(entry_count + 1);
+        self.write_next_free((next_free + needed) as u16);
+
+        Ok(())
+    }
+
+    fn write_entry_count(&mut self, new_entry_count: u16) {
+        self.buf[ENTRY_COUNT_RANGE].copy_from_slice(&new_entry_count.to_le_bytes());
+    }
+
+    fn write_next_free(&mut self, new_next_free: u16) {
+        self.buf[NEXT_FREE_RANGE].copy_from_slice(&new_next_free.to_le_bytes());
+    }
 }
 
 impl Record {
@@ -99,4 +129,8 @@ fn write_record_to_buf(buf: &mut [u8; PAGE_SIZE], offset: usize, record: Record)
 
     buf[DATA_LEN_RANGE.last().unwrap()..DATA_LEN_RANGE.last().unwrap() + record.value.len()]
         .copy_from_slice(record.value.as_bytes());
+}
+
+fn record_len(record: &Record) -> usize {
+    RECORD_SIZE + record.value.len()
 }

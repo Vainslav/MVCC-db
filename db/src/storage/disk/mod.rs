@@ -30,6 +30,22 @@ impl DiskManager {
         todo!()
     }
 
+    pub fn get_cur_data_writing_page(&self) -> io::Result<Page> {
+        let data = self.data_files.last().unwrap().last_page()?;
+
+        let page_id = PageId {
+            page_num: data.0,
+            file_id: self.data_files.len() as u16,
+        };
+
+        Ok(Page {
+            id: page_id,
+            pin_count: 0.into(),
+            dirty: false.into(),
+            data: data.1.into(),
+        })
+    }
+
     pub fn write_page(&self, page: &Page) -> io::Result<()> {
         match page.get_page_type() {
             PageType::Bucket => todo!(),
@@ -71,7 +87,7 @@ impl<T: FileHeader> DiskFile<T> {
         })
     }
 
-    pub fn alloc_bucket_page(&self) -> [u8; PAGE_SIZE] {
+    pub fn alloc_page(&self) -> [u8; PAGE_SIZE] {
         let mut header = self.header.write().unwrap();
         let page_id = header.inc_page_count();
         T::write_header_to_file(&self.file, &header).expect("write header failed");
@@ -80,17 +96,24 @@ impl<T: FileHeader> DiskFile<T> {
         bytes
     }
 
-    pub fn write_page(&self, page_id: u32, data: &[u8; PAGE_SIZE]) -> io::Result<()> {
+    pub fn write_page(&self, page_id: u16, data: &[u8; PAGE_SIZE]) -> io::Result<()> {
         write_at_impl(&self.file, data, Self::page_offset(page_id))
     }
 
-    pub fn read_page(&self, page_id: u32) -> io::Result<[u8; PAGE_SIZE]> {
+    pub fn read_page(&self, page_id: u16) -> io::Result<[u8; PAGE_SIZE]> {
         let mut buf = [0; PAGE_SIZE];
         read_exact_at_impl(&self.file, &mut buf, Self::page_offset(page_id))?;
         Ok(buf)
     }
 
-    fn page_offset(page_id: u32) -> u64 {
+    pub fn last_page(&self) -> io::Result<(u16, [u8; PAGE_SIZE])> {
+        let mut buf = [0; PAGE_SIZE];
+        let page_id = self.header.read().unwrap().page_count() - 1;
+        read_exact_at_impl(&self.file, &mut buf, Self::page_offset(page_id))?;
+        Ok((page_id, buf))
+    }
+
+    fn page_offset(page_id: u16) -> u64 {
         T::header_size() as u64 + page_id as u64 * PAGE_SIZE as u64
     }
 }
@@ -106,6 +129,6 @@ trait FileHeader {
 
     fn header_size() -> usize;
 
-    fn page_count(&self) -> u32;
-    fn inc_page_count(&mut self) -> u32;
+    fn page_count(&self) -> u16;
+    fn inc_page_count(&mut self) -> u16;
 }

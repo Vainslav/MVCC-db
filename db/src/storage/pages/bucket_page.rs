@@ -45,7 +45,7 @@ const ENTRY_HEADER_SIZE: usize = std::mem::size_of::<u64>() + // hash
     std::mem::size_of::<u16>(); // key_len
 
 const ENTRY_PAGE_ID_OFFSET: usize = 8;
-const ENTRY_SEGMENT_ID_OFFSET: usize = 10;
+const ENTRY_FILE_ID_OFFSET: usize = 10;
 const ENTRY_PAGE_OFFSET_OFFSET: usize = 12;
 const ENTRY_KEY_LEN_OFFSET: usize = 14;
 const ENTRY_KEY_BYTES_OFFSET: usize = 16;
@@ -58,12 +58,12 @@ impl BucketEntryHeader {
                 .unwrap(),
         );
         let page_id = u16::from_le_bytes(
-            buf[offset_in_buf + ENTRY_PAGE_ID_OFFSET..offset_in_buf + ENTRY_SEGMENT_ID_OFFSET]
+            buf[offset_in_buf + ENTRY_PAGE_ID_OFFSET..offset_in_buf + ENTRY_FILE_ID_OFFSET]
                 .try_into()
                 .unwrap(),
         );
         let segment_id = u16::from_le_bytes(
-            buf[offset_in_buf + ENTRY_SEGMENT_ID_OFFSET..offset_in_buf + ENTRY_PAGE_OFFSET_OFFSET]
+            buf[offset_in_buf + ENTRY_FILE_ID_OFFSET..offset_in_buf + ENTRY_PAGE_OFFSET_OFFSET]
                 .try_into()
                 .unwrap(),
         );
@@ -153,37 +153,48 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
             file_id: next_file_id,
         }
     }
+
+    fn next_free(&self) -> usize {
+        u16::from_le_bytes(self.buf[FREE_RANGE].try_into().expect("Should be 2 bytes")) as usize
+    }
 }
 
 impl<B: DerefMut<Target = [u8; PAGE_SIZE]> + Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
-    pub fn write_entry(&mut self, key: &[u8], hash: u64, record_id: NewRecordId) -> Result<(), ()> {
+    pub fn append_entry(&mut self, key: &[u8], hash: u64, record_id: NewRecordId) -> Result<(), ()> {
         let entry_count = self.entry_count();
-        let buf_mut = self.buf.as_mut();
         let needed = ENTRY_HEADER_SIZE + key.len();
 
-        let next_free =
-            u16::from_le_bytes(buf_mut[FREE_RANGE].try_into().expect("Should be 2 bytes")) as usize;
+        let next_free = self.next_free();
 
         if next_free + needed > PAGE_SIZE {
             return Err(());
         }
 
-        buf_mut[next_free..next_free + ENTRY_PAGE_ID_OFFSET].copy_from_slice(&hash.to_le_bytes());
-        buf_mut[next_free + ENTRY_PAGE_ID_OFFSET..next_free + ENTRY_SEGMENT_ID_OFFSET]
+        self.buf[next_free..next_free + ENTRY_PAGE_ID_OFFSET].copy_from_slice(&hash.to_le_bytes());
+        self.buf[next_free + ENTRY_PAGE_ID_OFFSET..next_free + ENTRY_FILE_ID_OFFSET]
             .copy_from_slice(&record_id.page_id.to_le_bytes());
-        buf_mut[next_free + ENTRY_SEGMENT_ID_OFFSET..next_free + ENTRY_PAGE_OFFSET_OFFSET]
+        self.buf[next_free + ENTRY_FILE_ID_OFFSET..next_free + ENTRY_PAGE_OFFSET_OFFSET]
             .copy_from_slice(&record_id.file_id.to_le_bytes());
-        buf_mut[next_free + ENTRY_PAGE_OFFSET_OFFSET..next_free + ENTRY_KEY_LEN_OFFSET]
+        self.buf[next_free + ENTRY_PAGE_OFFSET_OFFSET..next_free + ENTRY_KEY_LEN_OFFSET]
             .copy_from_slice(&record_id.page_offset.to_le_bytes());
-        buf_mut[next_free + ENTRY_KEY_LEN_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET]
+        self.buf[next_free + ENTRY_KEY_LEN_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET]
             .copy_from_slice(&(key.len() as u16).to_le_bytes());
-        buf_mut[next_free + ENTRY_KEY_BYTES_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET + key.len()]
+        self.buf[next_free + ENTRY_KEY_BYTES_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET + key.len()]
             .copy_from_slice(key);
 
-        buf_mut[FREE_RANGE].copy_from_slice(&((next_free as usize + needed) as u16).to_le_bytes());
-        buf_mut[ENTRIES_COUNT_RANGE].copy_from_slice(&(entry_count + 1).to_le_bytes());
+        self.buf[FREE_RANGE].copy_from_slice(&((next_free + needed) as u16).to_le_bytes());
+        self.buf[ENTRIES_COUNT_RANGE].copy_from_slice(&(entry_count + 1).to_le_bytes());
 
         Ok(())
+    }
+
+    pub fn change_entry_pointer(&mut self, offset: usize, new_record_id: NewRecordId) {
+        self.buf[offset + ENTRY_PAGE_ID_OFFSET..offset + ENTRY_FILE_ID_OFFSET]
+            .copy_from_slice(&new_record_id.page_id.to_le_bytes());
+        self.buf[offset + ENTRY_FILE_ID_OFFSET..offset + ENTRY_PAGE_OFFSET_OFFSET]
+            .copy_from_slice(&new_record_id.file_id.to_le_bytes());
+        self.buf[offset + ENTRY_PAGE_OFFSET_OFFSET..offset + ENTRY_KEY_LEN_OFFSET]
+            .copy_from_slice(&new_record_id.page_offset.to_le_bytes());
     }
 }
 

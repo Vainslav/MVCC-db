@@ -10,7 +10,7 @@ const DATA_FILE_HEADER_SIZE: usize = std::mem::size_of::<u32>(); // page_count
 const PAGE_COUNT_RANGE: Range<usize> = 0..4;
 
 pub struct DataFileHeader {
-    page_count: u32,
+    page_count: u16,
 }
 
 impl FileHeader for DataFileHeader {
@@ -31,7 +31,7 @@ impl FileHeader for DataFileHeader {
         let mut buf = [0u8; DATA_FILE_HEADER_SIZE];
         read_exact_at_impl(&file, &mut buf, 0)?;
         Ok(DataFileHeader {
-            page_count: u32::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),
+            page_count: u16::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),
         })
     }
 
@@ -39,11 +39,11 @@ impl FileHeader for DataFileHeader {
         DATA_FILE_HEADER_SIZE
     }
 
-    fn page_count(&self) -> u32 {
+    fn page_count(&self) -> u16 {
         self.page_count
     }
 
-    fn inc_page_count(&mut self) -> u32 {
+    fn inc_page_count(&mut self) -> u16 {
         let prev = self.page_count;
         self.page_count += 1;
         prev

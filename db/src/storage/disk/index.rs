@@ -10,14 +10,14 @@ const BUCKET_COUNT_RANGE: Range<usize> = 8..12;
 const PAGE_COUNT_RANGE: Range<usize> = 12..16;
 
 const INDEX_FILE_HEADER_SIZE: usize = std::mem::size_of::<u32>() + // bucket_count
-    std::mem::size_of::<u32>() + // page_count
+    std::mem::size_of::<u16>() + // page_count
     std::mem::size_of::<u64>(); // next_free
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct IndexFileHeader {
     next_free: u64,
     bucket_count: u32,
-    page_count: u32,
+    page_count: u16,
 }
 
 impl FileHeader for IndexFileHeader {
@@ -46,7 +46,7 @@ impl FileHeader for IndexFileHeader {
         Ok(IndexFileHeader {
             next_free: u64::from_le_bytes(buf[NEXT_FREE_RANGE].try_into().unwrap()),
             bucket_count: u32::from_le_bytes(buf[BUCKET_COUNT_RANGE].try_into().unwrap()),
-            page_count: u32::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),
+            page_count: u16::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),
         })
     }
 
@@ -54,11 +54,11 @@ impl FileHeader for IndexFileHeader {
         INDEX_FILE_HEADER_SIZE
     }
 
-    fn page_count(&self) -> u32 {
+    fn page_count(&self) -> u16 {
         self.page_count
     }
 
-    fn inc_page_count(&mut self) -> u32 {
+    fn inc_page_count(&mut self) -> u16 {
         let prev = self.page_count;
         self.page_count += 1;
         prev
