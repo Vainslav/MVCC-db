@@ -23,11 +23,41 @@ pub struct DiskManager {
 
 impl DiskManager {
     pub fn init(index_file_paths: Vec<&str>, data_file_paths: Vec<&str>) -> DiskManager {
-        todo!()
+        let index_files: Vec<_> = index_file_paths
+            .iter()
+            .map(|path| DiskFile::<IndexFileHeader>::open(Path::new(path)).unwrap())
+            .collect();
+        let data_files: Vec<_> = data_file_paths
+            .iter()
+            .map(|path| DiskFile::<DataFileHeader>::open(Path::new(path)).unwrap())
+            .collect();
+        Self {
+            index_files,
+            data_files,
+        }
     }
 
     pub fn read_page(&self, page_id: &PageId, page_type: PageType) -> io::Result<Page> {
-        todo!()
+        let PageId { page_num, file_id } = *page_id;
+        let data = match page_type {
+            PageType::Bucket => self
+                .index_files
+                .get(file_id as usize)
+                .expect(&format!("invalid file_id: {}", file_id))
+                .read_page(page_num),
+            PageType::Data => self
+                .data_files
+                .get(file_id as usize)
+                .expect(&format!("invalid file_id: {}", file_id))
+                .read_page(page_num),
+        }?;
+
+        Ok(Page {
+            id: *page_id,
+            pin_count: 0.into(),
+            dirty: false.into(),
+            data: data.into(),
+        })
     }
 
     pub fn next_writable(&self, page_type: PageType) -> io::Result<PageId> {
@@ -36,23 +66,53 @@ impl DiskManager {
             PageType::Data => self.data_files.last().unwrap().last_page()?,
         };
 
+        let file_id = (match page_type {
+            PageType::Bucket => self.index_files.len(),
+            PageType::Data => self.data_files.len(),
+        } - 1) as u16;
+
         Ok(PageId {
             page_num: data.0,
-            file_id: self.data_files.len() as u16,
-        })       
+            file_id,
+        })
     }
 
     pub fn write_page(&self, page: &Page) -> io::Result<()> {
+        let PageId { page_num, file_id } = page.id;
+        let page_data_lock = page.data.read().unwrap();
+
         match page.get_page_type() {
-            PageType::Bucket => todo!(),
-            PageType::Data => todo!(),
+            PageType::Bucket => self
+                .index_files
+                .get(file_id as usize)
+                .expect(&format!("invalid file_id: {}", file_id))
+                .write_page(page_num, &page_data_lock),
+            PageType::Data => self
+                .data_files
+                .get(file_id as usize)
+                .expect(&format!("invalid file_id: {}", file_id))
+                .write_page(page_num, &page_data_lock),
         }
     }
 
     pub fn alloc_page(&mut self, page_type: PageType) -> Page {
-        match page_type {
-            PageType::Bucket => todo!(),
-            PageType::Data => todo!(),
+        let (page_num, data) = match page_type {
+            PageType::Bucket => self.index_files.last().unwrap().alloc_page(),
+            PageType::Data => self.data_files.last().unwrap().alloc_page(),
+        };
+
+        let file_id = (match page_type {
+            PageType::Bucket => self.index_files.len(),
+            PageType::Data => self.data_files.len(),
+        } - 1) as u16;
+
+        let id = PageId { page_num, file_id };
+
+        Page {
+            id,
+            pin_count: 0.into(),
+            dirty: false.into(),
+            data: data.into(),
         }
     }
 }
@@ -77,19 +137,26 @@ impl<T: FileHeader> DiskFile<T> {
             }
             Err(e) => return Err(e),
         };
-        Ok(Self {
+
+        let s = Self {
             file,
             header: header.into(),
-        })
+        };
+
+        if s.header.read().unwrap().page_count() == 0 {
+            s.alloc_page();
+        }
+
+        Ok(s)
     }
 
-    pub fn alloc_page(&self) -> [u8; PAGE_SIZE] {
+    pub fn alloc_page(&self) -> (u16, [u8; PAGE_SIZE]) {
         let mut header = self.header.write().unwrap();
         let page_id = header.inc_page_count();
         T::write_header_to_file(&self.file, &header).expect("write header failed");
-        let bytes = get_init_page_bytes(PageType::Bucket);
+        let bytes = get_init_page_bytes(T::PAGE_TYPE);
         write_at_impl(&self.file, &bytes, Self::page_offset(page_id)).expect("write failed");
-        bytes
+        (page_id, bytes)
     }
 
     pub fn write_page(&self, page_id: u16, data: &[u8; PAGE_SIZE]) -> io::Result<()> {
@@ -115,6 +182,8 @@ impl<T: FileHeader> DiskFile<T> {
 }
 
 trait FileHeader {
+    const PAGE_TYPE: PageType;
+
     fn new() -> Self;
 
     fn write_header_to_file(file: &File, header: &Self) -> io::Result<()>;

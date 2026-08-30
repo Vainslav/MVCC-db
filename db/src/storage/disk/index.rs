@@ -1,7 +1,7 @@
 use std::{fs::File, io, ops::Range};
 
 use crate::{
-    storage::disk::FileHeader,
+    storage::{disk::FileHeader, pages::PageType},
     write_read_impl::{read_exact_at_impl, write_at_impl},
 };
 
@@ -21,6 +21,8 @@ pub struct IndexFileHeader {
 }
 
 impl FileHeader for IndexFileHeader {
+    const PAGE_TYPE: PageType = PageType::Bucket;
+
     fn new() -> Self {
         IndexFileHeader {
             next_free: INDEX_FILE_HEADER_SIZE as u64,

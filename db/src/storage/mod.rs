@@ -1,8 +1,16 @@
-use std::{io, ops::Range, sync::{Arc, Mutex, atomic::AtomicU64}};
+use std::{
+    io,
+    ops::Range,
+    sync::{Arc, Mutex, atomic::AtomicU64},
+};
 
 use crate::{
-    hash::fnv1a, storage::pages::{
-        PageId, PageType, bucket_page::{BucketChainIter, BucketPageView}, buffer_pool::ClockBufferPool, data_page::DataPageView,
+    hash::fnv1a,
+    storage::pages::{
+        PageId, PageType,
+        bucket_page::{BucketChainIter, BucketPageView},
+        buffer_pool::ClockBufferPool,
+        data_page::DataPageView,
     },
 };
 
@@ -86,7 +94,7 @@ impl DbValue {
 }
 
 pub struct Storage {
-    page_cache: Arc<ClockBufferPool>
+    page_cache: Arc<ClockBufferPool>,
 }
 
 impl Storage {
@@ -121,9 +129,19 @@ impl Storage {
     }
 
     pub fn get_value_by_record_id(&self, record_id: &NewRecordId) -> io::Result<Option<Record>> {
-        let NewRecordId { page_id, file_id, page_offset } = *record_id;
+        let NewRecordId {
+            page_id,
+            file_id,
+            page_offset,
+        } = *record_id;
 
-        let page = self.page_cache.fetch(PageId { page_num: page_id, file_id }, PageType::Data)?;
+        let page = self.page_cache.fetch(
+            PageId {
+                page_num: page_id,
+                file_id,
+            },
+            PageType::Data,
+        )?;
         let read_guard = page.data.read().unwrap();
 
         let data_page = DataPageView::new(read_guard);
@@ -132,9 +150,19 @@ impl Storage {
     }
 
     pub fn delete_record(&self, record_id: &NewRecordId, xmax: u32) -> io::Result<()> {
-        let NewRecordId { page_id, file_id, page_offset } = *record_id;
-        
-        let page = self.page_cache.fetch(PageId { page_num: page_id, file_id }, PageType::Data)?;
+        let NewRecordId {
+            page_id,
+            file_id,
+            page_offset,
+        } = *record_id;
+
+        let page = self.page_cache.fetch(
+            PageId {
+                page_num: page_id,
+                file_id,
+            },
+            PageType::Data,
+        )?;
         let write_guard = page.data.write().unwrap();
 
         let mut data_page = DataPageView::new(write_guard);
@@ -157,7 +185,7 @@ impl Storage {
         loop {
             let mut optional_key_page_id = None;
 
-            for page_result in BucketChainIter::new(&self.page_cache, page_id){
+            for page_result in BucketChainIter::new(&self.page_cache, page_id) {
                 let page_handle = page_result?;
                 let read_guard = page_handle.data.read().unwrap();
 
@@ -190,17 +218,25 @@ impl Storage {
                 continue;
             }
 
-            let offset = data_page.append_record(record).expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSs");
+            let offset = data_page
+                .append_record(record)
+                .expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSs");
 
-            let record_id = NewRecordId { page_id: writable_data.id.page_num, file_id: writable_data.id.file_id, page_offset: offset };
+            let record_id = NewRecordId {
+                page_id: writable_data.id.page_num,
+                file_id: writable_data.id.file_id,
+                page_offset: offset,
+            };
 
             if let Some((_, offset)) = optional_key_page_id {
                 bucket_page.change_entry_pointer(offset, record_id);
             } else {
-                bucket_page.append_entry(key_bytes, hash, record_id).expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSs");
+                bucket_page
+                    .append_entry(key_bytes, hash, record_id)
+                    .expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSs");
             }
 
-            return Ok(record_id)
+            return Ok(record_id);
         }
     }
 }

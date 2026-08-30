@@ -160,7 +160,12 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
 }
 
 impl<B: DerefMut<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
-    pub fn append_entry(&mut self, key: &[u8], hash: u64, record_id: NewRecordId) -> Result<(), ()> {
+    pub fn append_entry(
+        &mut self,
+        key: &[u8],
+        hash: u64,
+        record_id: NewRecordId,
+    ) -> Result<(), ()> {
         let entry_count = self.entry_count();
         let needed = ENTRY_HEADER_SIZE + key.len();
 
@@ -179,7 +184,8 @@ impl<B: DerefMut<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
             .copy_from_slice(&record_id.page_offset.to_le_bytes());
         self.buf[next_free + ENTRY_KEY_LEN_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET]
             .copy_from_slice(&(key.len() as u16).to_le_bytes());
-        self.buf[next_free + ENTRY_KEY_BYTES_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET + key.len()]
+        self.buf
+            [next_free + ENTRY_KEY_BYTES_OFFSET..next_free + ENTRY_KEY_BYTES_OFFSET + key.len()]
             .copy_from_slice(key);
 
         self.buf[FREE_RANGE].copy_from_slice(&((next_free + needed) as u16).to_le_bytes());

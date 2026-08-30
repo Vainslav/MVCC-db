@@ -8,14 +8,13 @@ pub struct DataPageView<B> {
 
 struct DataPageHeader {
     entry_count: u16,
-    next_free: u16
+    next_free: u16,
 }
 
 const ENTRY_COUNT_RANGE: Range<usize> = 1..3;
 const NEXT_FREE_RANGE: Range<usize> = 3..5;
 
 impl<B> DataPageView<B> {
-    
     pub fn new(buf: B) -> Self {
         DataPageView { buf }
     }
@@ -43,7 +42,11 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
     }
 
     fn next_free(&self) -> usize {
-        u16::from_le_bytes(self.buf[NEXT_FREE_RANGE].try_into().expect("Should be 2 bytes")) as usize
+        u16::from_le_bytes(
+            self.buf[NEXT_FREE_RANGE]
+                .try_into()
+                .expect("Should be 2 bytes"),
+        ) as usize
     }
 }
 
@@ -53,9 +56,9 @@ impl<B: DerefMut<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
         let next_free = self.next_free();
 
         let needed = record_len(&record);
-        
+
         if next_free + needed > PAGE_SIZE {
-            return Err(())
+            return Err(());
         }
 
         write_record_to_buf(&mut self.buf, next_free, record);
@@ -69,7 +72,7 @@ impl<B: DerefMut<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
     pub fn change_xmax(&mut self, offset: usize, new_xmax: u32) {
         let xmax_range_updated: Range<usize> =
             XMAX_RANGE.min().unwrap() + offset..XMAX_RANGE.last().unwrap() + offset;
-        
+
         self.buf[xmax_range_updated].copy_from_slice(&new_xmax.to_le_bytes());
     }
 
