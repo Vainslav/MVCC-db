@@ -5,17 +5,14 @@ use crate::{
     write_read_impl::{read_exact_at_impl, write_at_impl},
 };
 
-const NEXT_FREE_RANGE: Range<usize> = 0..8;
-const BUCKET_COUNT_RANGE: Range<usize> = 8..12;
-const PAGE_COUNT_RANGE: Range<usize> = 12..16;
+const BUCKET_COUNT_RANGE: Range<usize> = 0..4;
+const PAGE_COUNT_RANGE: Range<usize> = 4..6;
 
 const INDEX_FILE_HEADER_SIZE: usize = std::mem::size_of::<u32>() + // bucket_count
-    std::mem::size_of::<u16>() + // page_count
-    std::mem::size_of::<u64>(); // next_free
+    std::mem::size_of::<u16>(); // page_count;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct IndexFileHeader {
-    next_free: u64,
     bucket_count: u32,
     page_count: u16,
 }
@@ -25,7 +22,6 @@ impl FileHeader for IndexFileHeader {
 
     fn new() -> Self {
         IndexFileHeader {
-            next_free: INDEX_FILE_HEADER_SIZE as u64,
             bucket_count: 0,
             page_count: 0,
         }
@@ -33,7 +29,6 @@ impl FileHeader for IndexFileHeader {
 
     fn write_header_to_file(file: &File, header: &Self) -> io::Result<()> {
         let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
-        buf[NEXT_FREE_RANGE].copy_from_slice(&header.next_free.to_le_bytes());
         buf[BUCKET_COUNT_RANGE].copy_from_slice(&header.bucket_count.to_le_bytes());
         buf[PAGE_COUNT_RANGE].copy_from_slice(&header.page_count.to_le_bytes());
         write_at_impl(&file, &buf, 0)
@@ -46,7 +41,6 @@ impl FileHeader for IndexFileHeader {
         let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
         read_exact_at_impl(&file, &mut buf, 0)?;
         Ok(IndexFileHeader {
-            next_free: u64::from_le_bytes(buf[NEXT_FREE_RANGE].try_into().unwrap()),
             bucket_count: u32::from_le_bytes(buf[BUCKET_COUNT_RANGE].try_into().unwrap()),
             page_count: u16::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),
         })
@@ -86,7 +80,7 @@ mod tests {
     fn test_read_header_from_file() {
         let mut file = tempfile::tempfile().unwrap();
 
-        file.write(any_as_u8_slice(&IndexFileHeader::new()));
+        file.write(&[0u8; INDEX_FILE_HEADER_SIZE]);
 
         let header = IndexFileHeader::read_header_from_file(&file).unwrap();
 
@@ -105,6 +99,6 @@ mod tests {
 
         file.read(&mut buf).unwrap();
 
-        assert_eq!(any_as_u8_slice(&header), buf);
+        assert_eq!([0u8; INDEX_FILE_HEADER_SIZE], buf);
     }
 }

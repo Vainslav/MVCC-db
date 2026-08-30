@@ -144,7 +144,16 @@ impl<T: FileHeader> DiskFile<T> {
         };
 
         if s.header.read().unwrap().page_count() == 0 {
-            s.alloc_page();
+            match T::PAGE_TYPE {
+                PageType::Bucket => {
+                    for _ in 0..32 {
+                        s.alloc_page();
+                    }
+                }
+                PageType::Data => {
+                    s.alloc_page();
+                }
+            }
         }
 
         Ok(s)
@@ -196,4 +205,113 @@ trait FileHeader {
 
     fn page_count(&self) -> u16;
     fn inc_page_count(&mut self) -> u16;
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::pages::bucket_page::get_bucket_page_init_bytes;
+
+    use super::*;
+
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_open() {
+        let dir = tempdir().unwrap();
+
+        let index_path = dir.path().join("index.db");
+        let data_path = dir.path().join("data.db");
+
+        let index_file = DiskFile::<IndexFileHeader>::open(&index_path).unwrap();
+        let data_file = DiskFile::<DataFileHeader>::open(&data_path).unwrap();
+
+        assert_eq!(index_file.header.read().unwrap().page_count(), 32);
+        assert_eq!(data_file.header.read().unwrap().page_count(), 1);
+
+        let mut buf = [0u8; PAGE_SIZE];
+
+        read_exact_at_impl(
+            &index_file.file,
+            &mut buf,
+            IndexFileHeader::header_size() as u64,
+        )
+        .unwrap();
+
+        assert_eq!(buf, get_init_page_bytes(PageType::Bucket));
+
+        read_exact_at_impl(
+            &data_file.file,
+            &mut buf,
+            DataFileHeader::header_size() as u64,
+        )
+        .unwrap();
+
+        assert_eq!(buf, get_init_page_bytes(PageType::Data));
+    }
+
+    #[test]
+    fn test_alloc_page() {
+        let dir = tempdir().unwrap();
+
+        let index_path = dir.path().join("index.db");
+        let index_file = DiskFile::<IndexFileHeader>::open(&index_path).unwrap();
+
+        assert_eq!(index_file.header.read().unwrap().page_count(), 32);
+
+        let (new_id, new_data) = index_file.alloc_page();
+
+        assert_eq!(new_id, 32);
+        assert_eq!(index_file.header.read().unwrap().page_count(), 33);
+
+        let mut buf = [0u8; PAGE_SIZE];
+        read_exact_at_impl(
+            &index_file.file,
+            &mut buf,
+            IndexFileHeader::header_size() as u64 + PAGE_SIZE as u64,
+        )
+        .unwrap();
+        assert_eq!(buf, new_data);
+
+        let data_path = dir.path().join("data.db");
+        let data_file = DiskFile::<DataFileHeader>::open(&data_path).unwrap();
+
+        assert_eq!(data_file.header.read().unwrap().page_count(), 1);
+
+        let (data_id, new) = data_file.alloc_page();
+
+        assert_eq!(data_id, 1);
+        assert_eq!(data_file.header.read().unwrap().page_count(), 2);
+
+        let mut data_buf = [0u8; PAGE_SIZE];
+        read_exact_at_impl(
+            &data_file.file,
+            &mut data_buf,
+            DataFileHeader::header_size() as u64 + PAGE_SIZE as u64,
+        )
+        .unwrap();
+        assert_eq!(data_buf, new);
+    }
+
+    #[test]
+    fn test_last_page() {
+        let dir = tempdir().unwrap();
+
+        let index_path = dir.path().join("index.db");
+        let data_path = dir.path().join("data.db");
+
+        let index_file = DiskFile::<IndexFileHeader>::open(&index_path).unwrap();
+        let data_file = DiskFile::<DataFileHeader>::open(&data_path).unwrap();
+
+        assert_eq!(index_file.header.read().unwrap().page_count(), 32);
+        assert_eq!(data_file.header.read().unwrap().page_count(), 1);
+
+        let (i_id, i_data) = index_file.last_page().unwrap();
+        let (d_id, d_data) = data_file.last_page().unwrap();
+
+        assert_eq!(i_id, 31);
+        assert_eq!(d_id, 0);
+
+        assert_eq!(i_data, get_init_page_bytes(PageType::Bucket));
+        assert_eq!(d_data, get_init_page_bytes(PageType::Data));
+    }
 }

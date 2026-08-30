@@ -1,7 +1,7 @@
 use std::{
     io,
     ops::Range,
-    sync::{Arc, Mutex, atomic::AtomicU64},
+    sync::{Arc, atomic::Ordering},
 };
 
 use crate::{
@@ -15,8 +15,8 @@ use crate::{
 };
 
 mod background;
-mod disk;
-mod pages;
+pub mod disk;
+pub mod pages;
 
 #[derive(Debug)]
 pub struct RecordId(pub u64);
@@ -36,15 +36,18 @@ const FILE_ID_RANGE: Range<usize> = 2..4;
 const PAGE_OFFSET_RANGE: Range<usize> = 4..6;
 
 impl NewRecordId {
-    fn from_compacted_bytes(buf: &[u8; RECORD_ID_SIZE]) -> NewRecordId {
+    fn from_compacted_bytes(buf: &[u8; RECORD_ID_SIZE]) -> Option<Self> {
         let page_id = u16::from_le_bytes(buf[PAGE_ID_RANGE].try_into().unwrap());
         let file_id = u16::from_le_bytes(buf[FILE_ID_RANGE].try_into().unwrap());
         let page_offset = u16::from_le_bytes(buf[PAGE_OFFSET_RANGE].try_into().unwrap());
 
-        NewRecordId {
-            page_id,
-            file_id,
-            page_offset,
+        match page_offset {
+            0 => None,
+            _ => Some(Self {
+                page_id,
+                file_id,
+                page_offset,
+            }),
         }
     }
 
@@ -70,27 +73,8 @@ pub struct KeyId {
 pub struct Record {
     pub xmin: u32,
     pub xmax: u32,
-    pub prev: NewRecordId,
+    pub prev: Option<NewRecordId>,
     pub value: String,
-}
-
-#[derive(Debug)]
-pub struct DbValue {
-    pub tx_start: usize,
-    pub tx_end: usize,
-    pub prev: RecordId,
-    pub value: String,
-}
-
-impl DbValue {
-    pub fn new(tx_start: usize, tx_end: usize, value: String) -> DbValue {
-        DbValue {
-            tx_start,
-            tx_end,
-            prev: RecordId(0),
-            value,
-        }
-    }
 }
 
 pub struct Storage {
@@ -156,16 +140,21 @@ impl Storage {
             page_offset,
         } = *record_id;
 
-        let page = self.page_cache.fetch(
-            PageId {
-                page_num: page_id,
-                file_id,
-            },
-            PageType::Data,
-        )?;
+        let page = self
+            .page_cache
+            .fetch(
+                PageId {
+                    page_num: page_id,
+                    file_id,
+                },
+                PageType::Data,
+            )
+            .unwrap();
         let write_guard = page.data.write().unwrap();
 
         let mut data_page = DataPageView::new(write_guard);
+
+        page.dirty.store(true, Ordering::Release);
 
         data_page.change_xmax(page_offset as usize, xmax);
 
@@ -186,7 +175,7 @@ impl Storage {
             let mut optional_key_page_id = None;
 
             for page_result in BucketChainIter::new(&self.page_cache, page_id) {
-                let page_handle = page_result?;
+                let page_handle = page_result.unwrap();
                 let read_guard = page_handle.data.read().unwrap();
 
                 let bucket = BucketPageView::new(read_guard);
@@ -200,11 +189,15 @@ impl Storage {
             }
 
             let writable_bucket = if let Some((key_page_id, _)) = optional_key_page_id {
-                self.page_cache.fetch(key_page_id, PageType::Bucket)?
+                self.page_cache
+                    .fetch(key_page_id, PageType::Bucket)
+                    .unwrap()
             } else {
-                self.page_cache.next_writable(PageType::Bucket)?
+                self.page_cache
+                    .fetch(page_id, PageType::Bucket)
+                    .expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSS")
             };
-            let writable_data = self.page_cache.next_writable(PageType::Data)?;
+            let writable_data = self.page_cache.next_writable(PageType::Data).unwrap();
 
             let bucket_write_guard = writable_bucket.data.write().unwrap();
             let data_write_guard = writable_data.data.write().unwrap();
@@ -221,6 +214,9 @@ impl Storage {
             let offset = data_page
                 .append_record(record)
                 .expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSs");
+
+            writable_bucket.dirty.store(true, Ordering::Release);
+            writable_data.dirty.store(true, Ordering::Release);
 
             let record_id = NewRecordId {
                 page_id: writable_data.id.page_num,

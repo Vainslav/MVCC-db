@@ -6,7 +6,7 @@ use std::{
 use crate::storage::{
     NewRecordId,
     pages::{
-        PAGE_SIZE, Page, PageId, PageType,
+        PAGE_SIZE, PageId, PageType,
         buffer_pool::{ClockBufferPool, PageHandle},
     },
 };
@@ -246,7 +246,7 @@ impl<'a> Iterator for BucketChainIter<'a> {
 
         let overflow = {
             let buf = handle.data.read().unwrap();
-            BucketPageView::new(&*buf).next_overflow_page()
+            BucketPageView::new(buf).next_overflow_page()
         };
 
         self.next_page = if overflow.file_id == 0 && overflow.page_num == 0 {

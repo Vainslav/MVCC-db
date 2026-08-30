@@ -19,16 +19,16 @@ pub enum TransactionState {
 
 #[derive(Debug)]
 pub struct Transaction {
-    id: usize,
+    id: u32,
     isolation: IsolationLevel,
     state: TransactionState,
-    in_progress: BTreeSet<usize>,
+    in_progress: BTreeSet<u32>,
     writes: BTreeSet<String>,
     reads: BTreeSet<String>,
 }
 
 impl Transaction {
-    pub fn new(id: usize, isolation: IsolationLevel) -> Transaction {
+    pub fn new(id: u32, isolation: IsolationLevel) -> Transaction {
         Transaction {
             id,
             isolation,
@@ -45,7 +45,7 @@ impl Transaction {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum TransactionProcessingError {
     SerializableError,
 }

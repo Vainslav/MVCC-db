@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    DbValue,
+    storage::Record,
     transactions::{IsolationLevel, Transaction, TransactionProcessingError, TransactionState},
 };
 
 pub struct TransactionManager {
-    transactions: BTreeMap<usize, Transaction>,
-    next_transaction_id: usize,
+    transactions: BTreeMap<u32, Transaction>,
+    next_transaction_id: u32,
 }
 
 impl Default for TransactionManager {
@@ -24,7 +24,7 @@ impl TransactionManager {
         }
     }
 
-    pub fn new_transaction(&mut self, isolation: IsolationLevel) -> usize {
+    pub fn new_transaction(&mut self, isolation: IsolationLevel) -> u32 {
         let tx_id = self.next_transaction_id;
         self.next_transaction_id += 1;
 
@@ -36,7 +36,7 @@ impl TransactionManager {
 
     pub fn complete_transaction(
         &mut self,
-        id: usize,
+        id: u32,
         state: TransactionState,
     ) -> Result<(), TransactionProcessingError> {
         if state == TransactionState::InProgress {
@@ -60,39 +60,39 @@ impl TransactionManager {
         Ok(())
     }
 
-    pub fn add_to_read_set(&mut self, id: usize, ids: Vec<String>) {
+    pub fn add_to_read_set(&mut self, id: u32, ids: Vec<String>) {
         let tx = self.transactions.get_mut(&id).unwrap();
         for i in ids {
             tx.reads.insert(i);
         }
     }
 
-    pub fn add_to_write_set(&mut self, id: usize, ids: Vec<String>) {
+    pub fn add_to_write_set(&mut self, id: u32, ids: Vec<String>) {
         let tx = self.transactions.get_mut(&id).unwrap();
         for i in ids {
             tx.writes.insert(i);
         }
     }
 
-    pub fn is_visible(&self, id: usize, db_value: &DbValue) -> bool {
+    pub fn is_visible(&self, id: u32, db_value: &Record) -> bool {
         let tx = self.transactions.get(&id).unwrap();
 
         match tx.isolation {
-            IsolationLevel::ReadUncommitted => db_value.tx_end == 0,
+            IsolationLevel::ReadUncommitted => db_value.xmax == 0,
             IsolationLevel::ReadCommitted => {
-                if db_value.tx_start != id
-                    && self.transactions.get(&db_value.tx_start).unwrap().state
+                if db_value.xmin != id
+                    && self.transactions.get(&db_value.xmin).unwrap().state
                         != TransactionState::Committed
                 {
                     return false;
                 }
 
-                if db_value.tx_end == id {
+                if db_value.xmax == id {
                     return false;
                 }
 
-                if db_value.tx_end > 0
-                    && self.transactions.get(&db_value.tx_end).unwrap().state
+                if db_value.xmax > 0
+                    && self.transactions.get(&db_value.xmax).unwrap().state
                         == TransactionState::Committed
                 {
                     return false;
@@ -101,30 +101,30 @@ impl TransactionManager {
                 true
             }
             IsolationLevel::RepeatableRead | IsolationLevel::Serializable => {
-                if db_value.tx_start > tx.id {
+                if db_value.xmin > tx.id {
                     return false;
                 }
 
-                if tx.in_progress.contains(&db_value.tx_start) {
+                if tx.in_progress.contains(&db_value.xmin) {
                     return false;
                 }
 
-                if self.transactions.get(&db_value.tx_start).unwrap().state
+                if self.transactions.get(&db_value.xmin).unwrap().state
                     != TransactionState::Committed
-                    && db_value.tx_start != tx.id
+                    && db_value.xmin != tx.id
                 {
                     return false;
                 }
 
-                if db_value.tx_end == tx.id {
+                if db_value.xmax == tx.id {
                     return false;
                 }
 
-                if db_value.tx_end < tx.id
-                    && db_value.tx_end > 0
-                    && self.transactions.get(&db_value.tx_end).unwrap().state
+                if db_value.xmax < tx.id
+                    && db_value.xmax > 0
+                    && self.transactions.get(&db_value.xmax).unwrap().state
                         == TransactionState::Committed
-                    && !tx.in_progress.contains(&db_value.tx_end)
+                    && !tx.in_progress.contains(&db_value.xmax)
                 {
                     return false;
                 }
@@ -134,11 +134,11 @@ impl TransactionManager {
         }
     }
 
-    fn in_progress(&self) -> BTreeSet<usize> {
+    fn in_progress(&self) -> BTreeSet<u32> {
         self.transactions
             .iter()
             .filter(|(_, t)| -> bool { t.state == TransactionState::InProgress })
-            .map(|(id, _)| -> usize { *id })
+            .map(|(id, _)| -> u32 { *id })
             .collect()
     }
 
@@ -164,7 +164,7 @@ impl TransactionManager {
     }
 
     #[cfg(test)]
-    pub fn get_transactions(&mut self) -> &mut BTreeMap<usize, Transaction> {
+    pub fn get_transactions(&mut self) -> &mut BTreeMap<u32, Transaction> {
         &mut self.transactions
     }
 }

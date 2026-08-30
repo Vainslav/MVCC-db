@@ -7,7 +7,9 @@ use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
 };
 
-use crate::storage::pages::bucket_page::get_bucket_page_init_bytes;
+use crate::storage::pages::{
+    bucket_page::get_bucket_page_init_bytes, data_page::get_data_page_init_bytes,
+};
 
 pub const PAGE_SIZE: usize = 16 * 1024;
 pub const NUM_PAGES: usize = (100 * 1000 * 1024) / PAGE_SIZE;
@@ -21,7 +23,7 @@ pub enum PageType {
     Data = 2,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct PageId {
     pub page_num: u16,
     pub file_id: u16,
@@ -47,6 +49,6 @@ impl Page {
 pub fn get_init_page_bytes(page_type: PageType) -> [u8; PAGE_SIZE] {
     match page_type {
         PageType::Bucket => get_bucket_page_init_bytes(),
-        PageType::Data => todo!(),
+        PageType::Data => get_data_page_init_bytes(),
     }
 }

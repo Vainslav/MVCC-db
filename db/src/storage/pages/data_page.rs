@@ -1,6 +1,9 @@
 use std::ops::{Deref, DerefMut, Range};
 
-use crate::storage::{NewRecordId, RECORD_ID_SIZE, Record, pages::PAGE_SIZE};
+use crate::storage::{
+    NewRecordId, RECORD_ID_SIZE, Record,
+    pages::{PAGE_SIZE, PageType},
+};
 
 pub struct DataPageView<B> {
     buf: B,
@@ -13,6 +16,8 @@ struct DataPageHeader {
 
 const ENTRY_COUNT_RANGE: Range<usize> = 1..3;
 const NEXT_FREE_RANGE: Range<usize> = 3..5;
+
+const RECORDS_START: usize = 5;
 
 impl<B> DataPageView<B> {
     pub fn new(buf: B) -> Self {
@@ -71,7 +76,7 @@ impl<B: DerefMut<Target = [u8; PAGE_SIZE]>> DataPageView<B> {
 
     pub fn change_xmax(&mut self, offset: usize, new_xmax: u32) {
         let xmax_range_updated: Range<usize> =
-            XMAX_RANGE.min().unwrap() + offset..XMAX_RANGE.last().unwrap() + offset;
+            XMAX_RANGE.min().unwrap() + offset..XMAX_RANGE.last().unwrap() + offset + 1;
 
         self.buf[xmax_range_updated].copy_from_slice(&new_xmax.to_le_bytes());
     }
@@ -96,10 +101,11 @@ impl Record {
     }
 }
 
+#[derive(Debug)]
 struct DataPageRecord {
     pub xmin: u32,
     pub xmax: u32,
-    pub prev: NewRecordId,
+    pub prev: Option<NewRecordId>,
     pub data_len: u16,
 }
 
@@ -111,14 +117,14 @@ const RECORD_SIZE: usize = std::mem::size_of::<u32>()
 const XMIN_RANGE: Range<usize> = 0..4;
 const XMAX_RANGE: Range<usize> = 4..8;
 const PREV_RECORD_RANGE: Range<usize> = 8..8 + RECORD_ID_SIZE;
-const DATA_LEN_RANGE: Range<usize> = 8 + RECORD_ID_SIZE..10 + RECORD_ID_SIZE;
+const DATA_LEN_RANGE: Range<usize> = 8 + RECORD_ID_SIZE..8 + RECORD_ID_SIZE + 2;
 
 impl DataPageRecord {
     fn from_compacted_bytes(buf: &[u8; RECORD_SIZE]) -> Self {
         let xmin = u32::from_le_bytes(buf[XMIN_RANGE].try_into().unwrap());
         let xmax = u32::from_le_bytes(buf[XMAX_RANGE].try_into().unwrap());
         let prev = NewRecordId::from_compacted_bytes(buf[PREV_RECORD_RANGE].try_into().unwrap());
-        let data_len = u16::from_le_bytes(buf[XMAX_RANGE].try_into().unwrap());
+        let data_len = u16::from_le_bytes(buf[DATA_LEN_RANGE].try_into().unwrap());
 
         DataPageRecord {
             xmin,
@@ -131,23 +137,40 @@ impl DataPageRecord {
 
 fn write_record_to_buf(buf: &mut [u8; PAGE_SIZE], offset: usize, record: Record) {
     let xmin_range_updated: Range<usize> =
-        XMIN_RANGE.min().unwrap() + offset..XMIN_RANGE.last().unwrap() + offset;
+        XMIN_RANGE.min().unwrap() + offset..XMIN_RANGE.last().unwrap() + offset + 1;
     let xmax_range_updated: Range<usize> =
-        XMAX_RANGE.min().unwrap() + offset..XMAX_RANGE.last().unwrap() + offset;
+        XMAX_RANGE.min().unwrap() + offset..XMAX_RANGE.last().unwrap() + offset + 1;
     let prev_range_updated: Range<usize> =
-        PREV_RECORD_RANGE.min().unwrap() + offset..PREV_RECORD_RANGE.last().unwrap() + offset;
+        PREV_RECORD_RANGE.min().unwrap() + offset..PREV_RECORD_RANGE.last().unwrap() + offset + 1;
     let data_len_range_updated: Range<usize> =
-        DATA_LEN_RANGE.min().unwrap() + offset..DATA_LEN_RANGE.last().unwrap() + offset;
+        DATA_LEN_RANGE.min().unwrap() + offset..DATA_LEN_RANGE.last().unwrap() + offset + 1;
 
     buf[xmin_range_updated].copy_from_slice(&record.xmin.to_le_bytes());
     buf[xmax_range_updated].copy_from_slice(&record.xmax.to_le_bytes());
-    buf[prev_range_updated].copy_from_slice(&record.prev.to_le_bytes());
+    buf[prev_range_updated].copy_from_slice(
+        &record
+            .prev
+            .map_or_else(|| [0; RECORD_ID_SIZE], |r| r.to_le_bytes()),
+    );
     buf[data_len_range_updated].copy_from_slice(&(record.value.len() as u16).to_le_bytes());
 
-    buf[DATA_LEN_RANGE.last().unwrap()..DATA_LEN_RANGE.last().unwrap() + record.value.len()]
+    buf[DATA_LEN_RANGE.last().unwrap() + 1 + offset
+        ..DATA_LEN_RANGE.last().unwrap() + offset + record.value.len() + 1]
         .copy_from_slice(record.value.as_bytes());
 }
 
 fn record_len(record: &Record) -> usize {
     RECORD_SIZE + record.value.len()
+}
+
+pub fn get_data_page_init_bytes() -> [u8; PAGE_SIZE] {
+    let mut buf = [0; PAGE_SIZE]; // could be changed to uninit in the future, but will require some extra work
+
+    // type
+    buf[0] = PageType::Data as u8;
+
+    // page header
+    buf[NEXT_FREE_RANGE].copy_from_slice(&(RECORDS_START as u16).to_le_bytes());
+
+    buf
 }
