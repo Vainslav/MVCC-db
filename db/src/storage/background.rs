@@ -1,20 +1,31 @@
 use std::sync::{Arc, atomic::Ordering::Relaxed};
 
-use crate::storage::pages::{Page, buffer_pool::ClockBufferPool};
+use crate::{
+    DiskManager,
+    storage::pages::{Page, buffer_pool::ClockBufferPool},
+};
 
 pub struct BackgroundWriter {
     page_cache: Arc<ClockBufferPool>,
+    disk_manager: Arc<DiskManager>,
 }
 
 impl BackgroundWriter {
     pub fn run(&self) {
         self.page_cache.iter().for_each(|page| {
-            flush_page(&page);
+            flush_page(&page, &self.disk_manager);
         });
+    }
+
+    pub fn new(page_cache: Arc<ClockBufferPool>, disk_manager: Arc<DiskManager>) -> Self {
+        Self {
+            page_cache,
+            disk_manager,
+        }
     }
 }
 
-fn flush_page(page: &Page) {
+fn flush_page(page: &Page, disk_manager: &DiskManager) {
     let old = page.dirty.load(Relaxed);
     if old {
         let _lock = page.data.read().unwrap();
@@ -23,11 +34,7 @@ fn flush_page(page: &Page) {
             .compare_exchange(old, false, Relaxed, Relaxed)
             .is_ok()
         {
-            write_to_disk(page);
+            disk_manager.write_page(page).unwrap();
         }
     }
-}
-
-fn write_to_disk(page: &Page) {
-    println!("Imaging this is writing to disk");
 }

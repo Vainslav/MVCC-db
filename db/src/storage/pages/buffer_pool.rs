@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use dashmap::DashMap;
+use dashmap::{DashMap, Entry};
 
 use crate::storage::{
     disk::DiskManager,
@@ -43,28 +43,43 @@ impl ClockBufferPool {
             }
         }
 
-        let page = self.disk_manager.read_page(&id, page_type)?;
-
-        let victim_idx = self.find_victim_frame().expect("buffer pool exhausted");
-        let mut slot = self.frames[victim_idx].slot.write().unwrap();
-        if let Some(old) = slot.take() {
-            if old.dirty.load(Ordering::Acquire) {
-                self.disk_manager.write_page(&old)?;
+        match self.index.entry(id) {
+            Entry::Occupied(occ) => {
+                let idx = *occ.get();
+                let slot = self.frames[idx].slot.read().unwrap();
+                let page = slot
+                    .as_ref()
+                    .filter(|p| p.id == id)
+                    .expect("index says page loaded, but frame mismatch");
+                page.pin_count.fetch_add(1, Ordering::AcqRel);
+                self.frames[idx].ref_bit.store(true, Ordering::Release);
+                Ok(PageHandle(page.clone()))
             }
-            self.index.remove(&old.id);
+            Entry::Vacant(vac) => {
+                let page = self.disk_manager.read_page(&id, page_type)?;
+
+                let victim_idx = self.find_victim_frame().expect("buffer pool exhausted");
+                let mut slot = self.frames[victim_idx].slot.write().unwrap();
+                if let Some(old) = slot.take() {
+                    if old.dirty.load(Ordering::Acquire) {
+                        self.disk_manager.write_page(&old)?;
+                    }
+                    self.index.remove(&old.id);
+                }
+                let arc = Arc::new(page);
+
+                arc.pin_count.fetch_add(1, Ordering::AcqRel);
+                *slot = Some(arc.clone());
+                drop(slot);
+
+                self.frames[victim_idx]
+                    .ref_bit
+                    .store(true, Ordering::Release);
+                vac.insert(victim_idx);
+
+                Ok(PageHandle(arc))
+            }
         }
-        let arc = Arc::new(page);
-
-        arc.pin_count.fetch_add(1, Ordering::AcqRel);
-        *slot = Some(arc.clone());
-        drop(slot);
-
-        self.frames[victim_idx]
-            .ref_bit
-            .store(true, Ordering::Release);
-        self.index.insert(id, victim_idx);
-
-        Ok(PageHandle(arc))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = PageHandle> {
