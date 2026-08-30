@@ -12,9 +12,9 @@ use crate::storage::pages::{
 };
 
 pub const PAGE_SIZE: usize = 16 * 1024;
-pub const NUM_PAGES: usize = (100 * 1000 * 1024) / PAGE_SIZE;
+pub const _NUM_PAGES: usize = (100 * 1000 * 1024) / PAGE_SIZE;
 
-const PAGE_TYPE_OFFSET: usize = 0;
+const _PAGE_TYPE_OFFSET: usize = 0;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug)]

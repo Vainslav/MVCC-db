@@ -21,13 +21,13 @@ pub struct BucketPageView<B> {
     buf: B,
 }
 
-pub struct BucketPageHeader {
+pub struct _BucketPageHeader {
     next_overflow_page: PageId,
     entry_count: u16,
     next_free_entry: u16,
 }
 
-pub const BUCKET_PAGE_HEADER_SIZE: usize = std::mem::size_of::<u16>() + // next_overflow_page_id
+pub const _BUCKET_PAGE_HEADER_SIZE: usize = std::mem::size_of::<u16>() + // next_overflow_page_id
     std::mem::size_of::<u16>() + // next_overflow_file_id
     std::mem::size_of::<u16>() + // entry_count
     std::mem::size_of::<u16>(); // next_free

@@ -18,9 +18,6 @@ mod background;
 pub mod disk;
 pub mod pages;
 
-#[derive(Debug)]
-pub struct RecordId(pub u64);
-
 #[derive(Debug, Clone, Copy)]
 pub struct NewRecordId {
     pub page_id: u16,
@@ -60,13 +57,6 @@ impl NewRecordId {
 
         buf
     }
-}
-
-#[derive(Debug)]
-pub struct KeyId {
-    pub page_id: usize,
-    pub file_id: usize,
-    pub page_offset: usize,
 }
 
 #[derive(Debug)]

@@ -9,7 +9,7 @@ pub struct DataPageView<B> {
     buf: B,
 }
 
-struct DataPageHeader {
+struct _DataPageHeader {
     entry_count: u16,
     next_free: u16,
 }
