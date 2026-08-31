@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-mod background;
+pub mod background;
 pub mod disk;
 pub mod pages;
 
