@@ -6,7 +6,6 @@ use std::sync::{
     RwLock,
     atomic::{
         AtomicBool, AtomicUsize,
-        Ordering::{Relaxed, SeqCst},
     },
 };
 
