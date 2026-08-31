@@ -144,13 +144,19 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
         None
     }
 
-    pub fn next_overflow_page(&self) -> PageId {
+    pub fn next_overflow_page(&self) -> Option<PageId> {
         let next_page_id = u16::from_le_bytes(self.buf[OVERFLOW_PAGE_ID_RANGE].try_into().unwrap());
         let next_file_id = u16::from_le_bytes(self.buf[OVERFLOW_FILE_ID_RANGE].try_into().unwrap());
 
-        PageId {
-            page_num: next_page_id,
-            file_id: next_file_id,
+        if next_page_id == 0 && next_file_id == 0 {
+            None
+        } else {
+            Some(
+                PageId {
+                    page_num: next_page_id,
+                    file_id: next_file_id,
+                }
+            )
         }
     }
 
@@ -244,15 +250,9 @@ impl<'a> Iterator for BucketChainIter<'a> {
             }
         };
 
-        let overflow = {
+        self.next_page = {
             let buf = handle.data.read().unwrap();
             BucketPageView::new(buf).next_overflow_page()
-        };
-
-        self.next_page = if overflow.file_id == 0 && overflow.page_num == 0 {
-            None
-        } else {
-            Some(overflow)
         };
 
         Some(Ok(handle))

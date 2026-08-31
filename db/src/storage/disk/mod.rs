@@ -267,7 +267,7 @@ mod tests {
         read_exact_at_impl(
             &index_file.file,
             &mut buf,
-            IndexFileHeader::header_size() as u64 + PAGE_SIZE as u64,
+            IndexFileHeader::header_size() as u64,
         )
         .unwrap();
         assert_eq!(buf, new_data);
@@ -313,5 +313,27 @@ mod tests {
 
         assert_eq!(i_data, get_init_page_bytes(PageType::Bucket));
         assert_eq!(d_data, get_init_page_bytes(PageType::Data));
+    }
+    
+    #[test]
+    fn test_index_first_page() {
+        let dir = tempdir().unwrap();
+
+        let index_path = dir.path().join("index.db");
+        
+        let index_file = DiskFile::<IndexFileHeader>::open(&index_path).unwrap();
+
+        assert_eq!(index_file.header.read().unwrap().page_count(), 32);
+
+        let mut buf = [0; 4];
+
+        read_exact_at_impl(
+            &index_file.file,
+            &mut buf,
+            IndexFileHeader::header_size() as u64 + 1,
+        )
+        .unwrap();
+
+        assert_eq!([0; 4], buf)
     }
 }

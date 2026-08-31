@@ -21,7 +21,7 @@ impl BackgroundWriter {
     pub fn start(self: Arc<Self>, interval: Duration) -> JoinHandle<()> {
         thread::spawn(move || {
             loop {
-                if self.shutdown.load(Relaxed) {
+                if !self.shutdown.load(Relaxed) {
                     thread::sleep(interval);
                     self.run();
                 }

@@ -79,7 +79,9 @@ impl Storage {
     pub fn get_record_id_by_key(&self, key: &str) -> io::Result<Option<NewRecordId>> {
         let bytes = key.as_bytes();
         let hash = fnv1a(bytes);
-        let bucket_number = (hash % 32) as u16;
+        let bucket_number = if (hash % 32) == 0 {
+            1
+        } else {(hash % 32)} as u16; // hack, needs fixing
 
         let page_id = PageId {
             page_num: bucket_number,
@@ -154,7 +156,9 @@ impl Storage {
     pub fn insert(&self, key: &str, record: Record) -> io::Result<NewRecordId> {
         let key_bytes = key.as_bytes();
         let hash = fnv1a(key_bytes);
-        let bucket_number = (hash % 32) as u16;
+        let bucket_number = if (hash % 32) == 0 {
+            1
+        } else {(hash % 32)} as u16;
 
         let page_id = PageId {
             page_num: bucket_number,
