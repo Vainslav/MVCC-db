@@ -37,8 +37,8 @@ impl DiskManager {
         }
     }
 
-    pub fn read_page(&self, page_id: &PageId, page_type: PageType) -> io::Result<Page> {
-        let PageId { page_num, file_id } = *page_id;
+    pub fn read_page(&self, page_id: &PageId) -> io::Result<Page> {
+        let PageId { page_num, file_id , page_type} = *page_id;
         let data = match page_type {
             PageType::Bucket => self
                 .index_files
@@ -74,14 +74,15 @@ impl DiskManager {
         Ok(PageId {
             page_num: data.0,
             file_id,
+            page_type
         })
     }
 
     pub fn write_page(&self, page: &Page) -> io::Result<()> {
-        let PageId { page_num, file_id } = page.id;
+        let PageId { page_num, file_id, page_type } = page.id;
         let page_data_lock = page.data.read().unwrap();
 
-        match page.get_page_type() {
+        match page_type {
             PageType::Bucket => self
                 .index_files
                 .get(file_id as usize)
@@ -106,7 +107,7 @@ impl DiskManager {
             PageType::Data => self.data_files.len(),
         } - 1) as u16;
 
-        let id = PageId { page_num, file_id };
+        let id = PageId { page_num, file_id, page_type };
 
         Page {
             id,

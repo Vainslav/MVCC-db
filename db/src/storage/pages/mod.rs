@@ -19,7 +19,7 @@ pub const _NUM_PAGES: usize = (100 * 1000 * 1024) / PAGE_SIZE;
 const _PAGE_TYPE_OFFSET: usize = 0;
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PageType {
     Bucket = 1,
     Data = 2,
@@ -29,6 +29,7 @@ pub enum PageType {
 pub struct PageId {
     pub page_num: u16,
     pub file_id: u16,
+    pub page_type: PageType,
 }
 
 pub struct Page {
@@ -43,7 +44,7 @@ impl Page {
         match self.data.read().expect("Not poisoned")[0] {
             1 => PageType::Bucket,
             2 => PageType::Data,
-            _ => panic!("Invalid page type"),
+            _ => panic!("Invalid page type {:?}", self.id),
         }
     }
 }

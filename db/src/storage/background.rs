@@ -43,9 +43,9 @@ impl BackgroundWriter {
 }
 
 fn flush_page(page: &Page, disk_manager: &DiskManager) {
+    let _lock = page.data.read().unwrap();
     let old = page.dirty.load(Relaxed);
     if old {
-        let _lock = page.data.read().unwrap();
         if page
             .dirty
             .compare_exchange(old, false, Relaxed, Relaxed)

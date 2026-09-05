@@ -140,8 +140,7 @@ impl Connection {
             Some(rid) => {
                 let record = self
                     .storage
-                    .get_value_by_record_id(&rid)
-                    .map_err(CommandExecutionError::from)?
+                    .get_value_by_record_id(&rid)?
                     .expect("record_id from chain must exist");
                 Ok(record.value)
             }
@@ -158,8 +157,7 @@ impl Connection {
 
         let Some(head) = self
             .storage
-            .get_record_id_by_key(&id)
-            .map_err(CommandExecutionError::from)?
+            .get_record_id_by_key(&id)?
         else {
             return Err(CommandExecutionError::NotFound);
         };
@@ -167,8 +165,7 @@ impl Connection {
         match self.find_visible_record(head, cur_tx)? {
             Some(rid) => {
                 self.storage
-                    .delete_record(&rid, cur_tx)
-                    .map_err(CommandExecutionError::from)?;
+                    .delete_record(&rid, cur_tx)?;
                 Ok(String::new())
             }
             None => Err(CommandExecutionError::NoneVisible),
@@ -184,8 +181,7 @@ impl Connection {
         loop {
             let record = self
                 .storage
-                .get_value_by_record_id(&rid)
-                .map_err(CommandExecutionError::from)?
+                .get_value_by_record_id(&rid)?
                 .expect("record_id must exist");
 
             if tx_manager.is_visible(cur_tx, &record) {

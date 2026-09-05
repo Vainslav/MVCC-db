@@ -31,7 +31,7 @@ impl ClockBufferPool {
         }
     }
 
-    pub fn fetch(&self, id: PageId, page_type: PageType) -> io::Result<PageHandle> {
+    pub fn fetch(&self, id: PageId) -> io::Result<PageHandle> {
         if let Some(idx) = self.index.get(&id) {
             let slot = self.frames[*idx].slot.read().unwrap();
             if let Some(page) = slot.as_ref() {
@@ -56,7 +56,7 @@ impl ClockBufferPool {
                 Ok(PageHandle(page.clone()))
             }
             Entry::Vacant(vac) => {
-                let page = self.disk_manager.read_page(&id, page_type)?;
+                let page = self.disk_manager.read_page(&id)?;
 
                 let victim_idx = self.find_victim_frame().expect("buffer pool exhausted");
                 let mut slot = self.frames[victim_idx].slot.write().unwrap();
@@ -95,7 +95,7 @@ impl ClockBufferPool {
     pub fn next_writable(&self, page_type: PageType) -> io::Result<PageHandle> {
         let id = self.disk_manager.next_writable(page_type)?;
 
-        self.fetch(id, page_type)
+        self.fetch(id)
     }
 
     fn find_victim_frame(&self) -> Option<usize> {

@@ -5,12 +5,8 @@ use std::{
 };
 
 use crate::{
-    hash::fnv1a,
-    storage::pages::{
-        PageId, PageType,
-        bucket_page::{BucketChainIter, BucketPageView},
-        buffer_pool::ClockBufferPool,
-        data_page::DataPageView,
+    hash::fnv1a, storage::pages::{
+        PageId, PageType, bucket_page::{BucketChainIter, BucketPageView}, buffer_pool::ClockBufferPool, data_page::DataPageView,
     },
 };
 
@@ -79,13 +75,12 @@ impl Storage {
     pub fn get_record_id_by_key(&self, key: &str) -> io::Result<Option<NewRecordId>> {
         let bytes = key.as_bytes();
         let hash = fnv1a(bytes);
-        let bucket_number = if (hash % 32) == 0 {
-            1
-        } else {(hash % 32)} as u16; // hack, needs fixing
+        let bucket_number = (hash % 32) as u16;
 
         let page_id = PageId {
             page_num: bucket_number,
             file_id: 0,
+            page_type: PageType::Bucket
         };
 
         for page_result in BucketChainIter::new(&self.page_cache, page_id) {
@@ -115,11 +110,10 @@ impl Storage {
             PageId {
                 page_num: page_id,
                 file_id,
-            },
-            PageType::Data,
+                page_type: PageType::Data
+            }
         )?;
         let read_guard = page.data.read().unwrap();
-
         let data_page = DataPageView::new(read_guard);
 
         Ok(Some(data_page.get_record(page_offset as usize)))
@@ -138,8 +132,8 @@ impl Storage {
                 PageId {
                     page_num: page_id,
                     file_id,
-                },
-                PageType::Data,
+                    page_type: PageType::Data
+                }
             )
             .unwrap();
         let write_guard = page.data.write().unwrap();
@@ -156,20 +150,19 @@ impl Storage {
     pub fn insert(&self, key: &str, record: Record) -> io::Result<NewRecordId> {
         let key_bytes = key.as_bytes();
         let hash = fnv1a(key_bytes);
-        let bucket_number = if (hash % 32) == 0 {
-            1
-        } else {(hash % 32)} as u16;
+        let bucket_number = (hash % 32) as u16;
 
         let page_id = PageId {
             page_num: bucket_number,
             file_id: 0,
+            page_type: PageType::Bucket
         };
 
         loop {
             let mut optional_key_page_id = None;
 
             for page_result in BucketChainIter::new(&self.page_cache, page_id) {
-                let page_handle = page_result.unwrap();
+                let page_handle = page_result?;
                 let read_guard = page_handle.data.read().unwrap();
 
                 let bucket = BucketPageView::new(read_guard);
@@ -184,14 +177,12 @@ impl Storage {
 
             let writable_bucket = if let Some((key_page_id, _)) = optional_key_page_id {
                 self.page_cache
-                    .fetch(key_page_id, PageType::Bucket)
-                    .unwrap()
+                    .fetch(key_page_id)?
             } else {
                 self.page_cache
-                    .fetch(page_id, PageType::Bucket)
-                    .expect("FIX ME PLSSSSSSSSSSSSSSSSSSSSSSS")
+                    .fetch(page_id)?
             };
-            let writable_data = self.page_cache.next_writable(PageType::Data).unwrap();
+            let writable_data = self.page_cache.next_writable(PageType::Data)?;
 
             let bucket_write_guard = writable_bucket.data.write().unwrap();
             let data_write_guard = writable_data.data.write().unwrap();

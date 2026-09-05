@@ -1,5 +1,6 @@
 use axum::{Router, routing::any};
 use db::{BackgroundWriter, DiskManager, Storage, TransactionManager, buffer_pool::ClockBufferPool};
+use tempfile::tempdir;
 use std::{sync::{Arc, RwLock}, time::Duration};
 use tracing::info;
 
@@ -10,11 +11,16 @@ pub struct AppState {
     tx_manager: Arc<RwLock<TransactionManager>>,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let disk_manager = Arc::new(DiskManager::init(vec!["index.db"], vec!["data.db"]));
+    let dir = tempdir().unwrap();
+
+    let index_path = dir.path().join("index.db");
+    let data_path = dir.path().join("data.db");
+
+    let disk_manager = Arc::new(DiskManager::init(vec![index_path.to_str().unwrap()], vec![data_path.to_str().unwrap()]));
     let cache = Arc::new(ClockBufferPool::new(64, disk_manager.clone()));
     let store = Arc::new(Storage::new(cache.clone()));
     let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
