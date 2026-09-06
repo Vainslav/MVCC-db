@@ -28,6 +28,7 @@ The database uses a hashed index file for key lookup and LSM-inspired append-onl
 
 A fixed number of hash buckets (32), each addressable by hash(key) % 32 (uses fnv1a as hashing algorithm). On overflow, buckets extend via a linked chain of overflow pages rather than growing the base file dynamically.
 
+```
 Index file:
  ---------------------------
 |Header                     |
@@ -39,7 +40,9 @@ Index file:
 |...                        |
 |Overflow pages...          |
  ---------------------------
+```
 
+```
 Bucket page:
  -----------------------------------------------------------------------------------------------
 |next_overflow_page: (page_num: 16 bits, file_id: 16 bits) — zero means no overflow             |
@@ -51,6 +54,7 @@ Bucket page:
 |Entry 1                                                                                        |
 |...                                                                                            |
  -----------------------------------------------------------------------------------------------
+```
 
 Each entry maps a key directly to the head of its version chain in the data file (tid). Updating a key rewrites this pointer to the newly inserted version. The index only ever holds one entry per live key.
 
@@ -58,6 +62,7 @@ Each entry maps a key directly to the head of its version chain in the data file
 
 Values are stored as an append-only sequence of fixed-size pages containing variable-length records. Each record is a single MVCC version and links to its predecessor, forming an undo chain walked at read time to find the version visible to a given snapshot.
 
+```
 Data file:
  ---------------------------
 |Header                     |
@@ -67,7 +72,9 @@ Data file:
 |Data page 1                |
 |...                        |
  ---------------------------
+```
 
+```
 Data page:
  -----------------------------------------------------------------------------------------
 |entry_count: 16 bits                                                                     |
@@ -79,6 +86,7 @@ Data page:
 |Record 1                                                                                 |
 |...                                                                                      |
  -----------------------------------------------------------------------------------------
+```
 
 ### Buffer pool
 
