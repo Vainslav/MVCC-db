@@ -48,7 +48,7 @@ class SerializableTests extends IsolationTestBase {
 
         var t1Failed = ex1.get() != null && ex1.get().getMessage().contains("SerializationError");
         var t2Failed = ex2.get() != null && ex2.get().getMessage().contains("SerializationError");
-        assertTrue(t1Failed || t2Failed, "Serializable не должен допускать lost update");
+        assertTrue(t1Failed ^ t2Failed, "Serializable не должен допускать lost update");
 
         try (var check = new Session(WS_URI)) {
             check.begin("serializable");
@@ -102,7 +102,7 @@ class SerializableTests extends IsolationTestBase {
 
         var t1Failed = ex1.get() != null && ex1.get().getMessage().contains("SerializationError");
         var t2Failed = ex2.get() != null && ex2.get().getMessage().contains("SerializationError");
-        assertTrue(t1Failed || t2Failed, "Serializable не должен допускать write-skew");
+        assertTrue(t1Failed ^ t2Failed, "Serializable не должен допускать write-skew");
 
         try (var check = new Session(WS_URI)) {
             check.begin("serializable");

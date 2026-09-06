@@ -1,21 +1,31 @@
 use axum::{Router, routing::any};
-use db::{Storage, TransactionManager};
-use std::sync::{Arc, RwLock};
+use db::{
+    BackgroundWriter, DiskManager, Storage, TransactionManager, buffer_pool::ClockBufferPool,
+};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use tracing::info;
 
 mod socket;
 
 pub struct AppState {
-    store: Arc<RwLock<Storage>>,
+    store: Arc<Storage>,
     tx_manager: Arc<RwLock<TransactionManager>>,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let store = Arc::new(RwLock::new(Storage::new()));
-    let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+    let disk_manager = Arc::new(DiskManager::init(vec!["index.db"], vec!["data.db"]));
+    let cache = Arc::new(ClockBufferPool::new(64, disk_manager.clone()));
+    let store = Arc::new(Storage::new(cache.clone()));
+    let tx_manager = Arc::new(RwLock::new(TransactionManager::new("transaction_file")));
+
+    let background_writer = Arc::new(BackgroundWriter::new(cache.clone(), disk_manager.clone()));
+    let _handle = background_writer.start(Duration::from_millis(1000));
 
     let state = Arc::new(AppState { store, tx_manager });
 

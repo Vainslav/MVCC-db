@@ -1,13 +1,14 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    io,
+    sync::{Arc, RwLock},
+};
 
 use crate::{
-    storage_old::Storage,
+    storage::{NewRecordId, Record, Storage},
     transactions::{
         IsolationLevel, TransactionProcessingError, TransactionState, manager::TransactionManager,
     },
 };
-
-use crate::storage::DbValue;
 
 pub enum Command {
     Put(String, String),
@@ -25,32 +26,35 @@ pub enum CommandExecutionError {
     NoActiveTransaction,
     TransactionAlreadyActive,
     SerializationError,
+    IoError(io::ErrorKind),
 }
 
 impl From<TransactionProcessingError> for CommandExecutionError {
     fn from(value: TransactionProcessingError) -> Self {
         match value {
-            TransactionProcessingError::SerializableError => {
-                CommandExecutionError::SerializationError
-            }
+            TransactionProcessingError::SerializableError => Self::SerializationError,
+            TransactionProcessingError::IoError(kind) => Self::IoError(kind),
         }
     }
 }
 
+impl From<io::Error> for CommandExecutionError {
+    fn from(error: io::Error) -> Self {
+        CommandExecutionError::IoError(error.kind())
+    }
+}
+
 pub struct Connection {
-    cur_tx: Option<usize>,
-    store: Arc<RwLock<Storage>>,
+    cur_tx: Option<u32>,
+    storage: Arc<Storage>,
     tx_manager: Arc<RwLock<TransactionManager>>,
 }
 
 impl Connection {
-    pub fn new(
-        store: Arc<RwLock<Storage>>,
-        tx_manager: Arc<RwLock<TransactionManager>>,
-    ) -> Connection {
+    pub fn new(storage: Arc<Storage>, tx_manager: Arc<RwLock<TransactionManager>>) -> Connection {
         Connection {
             cur_tx: None,
-            store,
+            storage,
             tx_manager,
         }
     }
@@ -59,52 +63,35 @@ impl Connection {
         if self.cur_tx.is_some() {
             return Err(CommandExecutionError::TransactionAlreadyActive);
         }
-
         let mut tx_manager = self.tx_manager.write().unwrap();
-        self.cur_tx = Some(tx_manager.new_transaction(isolation));
-
+        self.cur_tx = Some(tx_manager.new_transaction(isolation)?);
         Ok(String::new())
     }
 
     pub fn commit(&mut self) -> Result<String, CommandExecutionError> {
-        if self.cur_tx.is_none() {
-            return Err(CommandExecutionError::NoActiveTransaction);
-        }
-
+        let cur_tx = self.current_tx()?;
         let mut tx_manager = self.tx_manager.write().unwrap();
-        let commit_result =
-            tx_manager.complete_transaction(self.cur_tx.unwrap(), TransactionState::Committed);
+        let commit_result = tx_manager.complete_transaction(cur_tx, TransactionState::Committed);
         if let Err(err) = commit_result
             && err == TransactionProcessingError::SerializableError
         {
-            if tx_manager
-                .complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)
-                .is_err()
-            {
-                panic!("Abort failed")
-            }
+            tx_manager
+                .complete_transaction(cur_tx, TransactionState::Aborted)
+                .expect("Abort failed");
             self.cur_tx = None;
             return Err(CommandExecutionError::from(err));
         }
         self.cur_tx = None;
-
         Ok(String::new())
     }
 
     pub fn abort(&mut self) -> Result<String, CommandExecutionError> {
-        if self.cur_tx.is_none() {
-            return Err(CommandExecutionError::NoActiveTransaction);
-        }
-
+        let cur_tx = self.current_tx()?;
         let mut tx_manager = self.tx_manager.write().unwrap();
-        if tx_manager
-            .complete_transaction(self.cur_tx.unwrap(), TransactionState::Aborted)
-            .is_err()
-        {
-            panic!("Abort failed")
-        }
+        tx_manager
+            .complete_transaction(cur_tx, TransactionState::Aborted)
+            .expect("Abort failed");
         self.cur_tx = None;
-
         Ok(String::new())
     }
 
@@ -115,21 +102,20 @@ impl Connection {
             .unwrap()
             .add_to_write_set(cur_tx, vec![id.clone()]);
 
-        let tx_manager_read = self.tx_manager.read().unwrap();
-        let mut storage_read = self.store.write().unwrap();
-        let data = &mut storage_read.data;
+        let head = self
+            .storage
+            .get_record_id_by_key(&id)
+            .map_err(CommandExecutionError::from)?;
 
-        if let Some(values) = data.get_mut(&id) {
-            for val in values.iter_mut().rev() {
-                if tx_manager_read.is_visible(cur_tx, val) {
-                    val.tx_end = cur_tx;
-                }
-            }
-
-            values.push(DbValue::new(cur_tx, 0, value));
-        } else {
-            data.insert(id, vec![DbValue::new(cur_tx, 0, value)]);
+        let record = Record {
+            xmin: cur_tx,
+            xmax: 0,
+            prev: head,
+            value,
         };
+        self.storage
+            .insert(&id, record)
+            .map_err(CommandExecutionError::from)?;
 
         Ok(String::new())
     }
@@ -141,20 +127,24 @@ impl Connection {
             .unwrap()
             .add_to_read_set(cur_tx, vec![id.clone()]);
 
-        let tx_manager_read = self.tx_manager.read().unwrap();
-        let storage_read = self.store.read().unwrap();
-        let data = &storage_read.data;
-
-        let Some(values) = data.get(&id) else {
+        let Some(head) = self
+            .storage
+            .get_record_id_by_key(&id)
+            .map_err(CommandExecutionError::from)?
+        else {
             return Err(CommandExecutionError::NotFound);
         };
 
-        for val in values.iter().rev() {
-            if tx_manager_read.is_visible(cur_tx, val) {
-                return Ok(val.value.clone());
+        match self.find_visible_record(head, cur_tx)? {
+            Some(rid) => {
+                let record = self
+                    .storage
+                    .get_value_by_record_id(&rid)?
+                    .expect("record_id from chain must exist");
+                Ok(record.value)
             }
+            None => Err(CommandExecutionError::NoneVisible),
         }
-        Err(CommandExecutionError::NoneVisible)
     }
 
     pub fn delete(&mut self, id: String) -> Result<String, CommandExecutionError> {
@@ -164,30 +154,43 @@ impl Connection {
             .unwrap()
             .add_to_write_set(cur_tx, vec![id.clone()]);
 
-        let tx_manager_read = self.tx_manager.read().unwrap();
-        let mut storage_read = self.store.write().unwrap();
-        let data = &mut storage_read.data;
+        let Some(head) = self.storage.get_record_id_by_key(&id)? else {
+            return Err(CommandExecutionError::NotFound);
+        };
 
-        if let Some(values) = data.get_mut(&id) {
-            let mut found = false;
-            for val in values.iter_mut().rev() {
-                if tx_manager_read.is_visible(cur_tx, val) {
-                    val.tx_end = cur_tx;
-                    found = true;
-                }
-            }
-
-            if found {
+        match self.find_visible_record(head, cur_tx)? {
+            Some(rid) => {
+                self.storage.delete_record(&rid, cur_tx)?;
                 Ok(String::new())
-            } else {
-                Err(CommandExecutionError::NoneVisible)
             }
-        } else {
-            Err(CommandExecutionError::NotFound)
+            None => Err(CommandExecutionError::NoneVisible),
         }
     }
 
-    fn current_tx(&self) -> Result<usize, CommandExecutionError> {
+    fn find_visible_record(
+        &self,
+        mut rid: NewRecordId,
+        cur_tx: u32,
+    ) -> Result<Option<NewRecordId>, CommandExecutionError> {
+        let tx_manager = self.tx_manager.read().unwrap();
+        loop {
+            let record = self
+                .storage
+                .get_value_by_record_id(&rid)?
+                .expect("record_id must exist");
+
+            if tx_manager.is_visible(cur_tx, &record) {
+                return Ok(Some(rid));
+            }
+
+            match record.prev {
+                Some(prev) => rid = prev,
+                None => return Ok(None),
+            }
+        }
+    }
+
+    fn current_tx(&self) -> Result<u32, CommandExecutionError> {
         self.cur_tx
             .ok_or(CommandExecutionError::NoActiveTransaction)
     }
@@ -213,17 +216,57 @@ pub fn execute_command(
 }
 
 #[cfg(test)]
-mod command_tests {
-    use std::sync::Arc;
+fn make_test_storage() -> Arc<Storage> {
+    use crate::storage::disk::DiskManager;
+    use crate::storage::pages::buffer_pool::ClockBufferPool;
 
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+
+    let index_path = dir.path().join("index.db");
+    let data_path = dir.path().join("data.db");
+
+    let disk_manager = DiskManager::init(
+        vec![index_path.to_str().unwrap()],
+        vec![data_path.to_str().unwrap()],
+    );
+
+    let page_cache = Arc::new(ClockBufferPool::new(64, Arc::new(disk_manager)));
+
+    std::mem::forget(dir);
+
+    Arc::new(Storage::new(page_cache))
+}
+
+#[cfg(test)]
+fn make_test_transaction_manager() -> Arc<RwLock<TransactionManager>> {
+    use crate::storage::disk::DiskManager;
+    use crate::storage::pages::buffer_pool::ClockBufferPool;
+
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+
+    let tx_manager = dir.path().join("tx_manager");
+
+    let tx_manager = TransactionManager::new(tx_manager.to_str().unwrap());
+
+    std::mem::forget(dir);
+
+    tx_manager.into()
+}
+
+#[cfg(test)]
+mod command_tests {
     use super::*;
 
     #[test]
     fn test_begin() {
-        let store = Arc::new(RwLock::new(Storage::new()));
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let storage = make_test_storage();
+        let tx_manager = make_test_transaction_manager();
 
-        let mut con = Connection::new(store, tx_manager);
+        let mut con = Connection::new(storage, tx_manager);
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
 
         assert!(
@@ -235,10 +278,10 @@ mod command_tests {
 
     #[test]
     fn test_commit() {
-        let store = Arc::new(RwLock::new(Storage::new()));
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let storage = make_test_storage();
+        let tx_manager = make_test_transaction_manager();
 
-        let mut con = Connection::new(store, tx_manager);
+        let mut con = Connection::new(storage, tx_manager);
         assert!(execute_command(&mut con, Command::Commit).is_err());
 
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
@@ -256,10 +299,10 @@ mod command_tests {
 
     #[test]
     fn test_abort() {
-        let store = Arc::new(RwLock::new(Storage::new()));
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let storage = make_test_storage();
+        let tx_manager = make_test_transaction_manager();
 
-        let mut con = Connection::new(store, tx_manager);
+        let mut con = Connection::new(storage, tx_manager);
         assert!(execute_command(&mut con, Command::Commit).is_err());
 
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
@@ -278,32 +321,31 @@ mod command_tests {
 
 #[cfg(test)]
 mod isolation_tests {
-
     use super::*;
 
     #[test]
     fn test_read_uncommitted() {
-        let store = Arc::new(RwLock::new(Storage::new()));
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let storage = make_test_storage();
+        let tx_manager = make_test_transaction_manager();
 
-        let mut con = Connection::new(store.clone(), tx_manager.clone());
-        let mut con2 = Connection::new(store, tx_manager.clone());
+        let mut con = Connection::new(storage.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(storage, tx_manager.clone());
 
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
         execute_command(&mut con2, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
 
         execute_command(&mut con, Command::Put("123".to_string(), "123".to_string())).unwrap();
         assert!(execute_command(&mut con2, Command::Get("123".to_string())).unwrap() == "123");
-        assert!(tx_manager.clone().write().unwrap().get_transactions().len() == 2);
+        assert!(tx_manager.write().unwrap().get_transactions().len() == 2);
     }
 
     #[test]
     fn test_read_committed() {
-        let store = Arc::new(RwLock::new(Storage::new()));
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let storage = make_test_storage();
+        let tx_manager = make_test_transaction_manager();
 
-        let mut con = Connection::new(store.clone(), tx_manager.clone());
-        let mut con2 = Connection::new(store.clone(), tx_manager.clone());
+        let mut con = Connection::new(storage.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(storage.clone(), tx_manager.clone());
 
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadCommitted)).unwrap();
         execute_command(&mut con2, Command::Begin(IsolationLevel::ReadCommitted)).unwrap();
@@ -374,11 +416,11 @@ mod isolation_tests {
 
     #[test]
     fn test_repeatable_read() {
-        let store = Arc::new(RwLock::new(Storage::new()));
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let storage = make_test_storage();
+        let tx_manager = make_test_transaction_manager();
 
-        let mut con = Connection::new(store.clone(), tx_manager.clone());
-        let mut con2 = Connection::new(store.clone(), tx_manager.clone());
+        let mut con = Connection::new(storage.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(storage.clone(), tx_manager.clone());
 
         execute_command(&mut con, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
         execute_command(&mut con2, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
@@ -403,7 +445,7 @@ mod isolation_tests {
             CommandExecutionError::NoneVisible
         );
 
-        let mut con3 = Connection::new(store.clone(), tx_manager.clone());
+        let mut con3 = Connection::new(storage.clone(), tx_manager.clone());
         execute_command(&mut con3, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
         assert_eq!(
             execute_command(&mut con3, Command::Get("123".to_string())).unwrap(),
@@ -426,7 +468,7 @@ mod isolation_tests {
             CommandExecutionError::NoneVisible
         );
 
-        let mut con4 = Connection::new(store.clone(), tx_manager.clone());
+        let mut con4 = Connection::new(storage.clone(), tx_manager.clone());
         execute_command(&mut con4, Command::Begin(IsolationLevel::RepeatableRead)).unwrap();
         assert_eq!(
             execute_command(&mut con4, Command::Get("123".to_string())).unwrap(),
@@ -454,12 +496,12 @@ mod isolation_tests {
 
     #[test]
     fn test_serializable() {
-        let store = Arc::new(RwLock::new(Storage::new()));
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let storage = make_test_storage();
+        let tx_manager = make_test_transaction_manager();
 
-        let mut con = Connection::new(store.clone(), tx_manager.clone());
-        let mut con2 = Connection::new(store.clone(), tx_manager.clone());
-        let mut con3 = Connection::new(store.clone(), tx_manager.clone());
+        let mut con = Connection::new(storage.clone(), tx_manager.clone());
+        let mut con2 = Connection::new(storage.clone(), tx_manager.clone());
+        let mut con3 = Connection::new(storage.clone(), tx_manager.clone());
 
         execute_command(&mut con, Command::Begin(IsolationLevel::Serializable)).unwrap();
         execute_command(&mut con2, Command::Begin(IsolationLevel::Serializable)).unwrap();

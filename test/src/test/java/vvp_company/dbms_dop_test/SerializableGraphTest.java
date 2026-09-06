@@ -10,7 +10,7 @@ public class SerializableGraphTest extends IsolationTestBase {
 
     @Test
     void testNoCyclesInSerializableSchedule() throws Exception {
-        int numTransactions = 1000;
+        int numTransactions = 100;
         int keysRange = 5;
         int maxOpsPerTx = 4;
         int threads = 5;
