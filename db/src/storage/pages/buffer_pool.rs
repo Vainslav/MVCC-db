@@ -34,12 +34,12 @@ impl ClockBufferPool {
     pub fn fetch(&self, id: PageId) -> io::Result<PageHandle> {
         if let Some(idx) = self.index.get(&id) {
             let slot = self.frames[*idx].slot.read().unwrap();
-            if let Some(page) = slot.as_ref() {
-                if page.id == id {
-                    page.pin_count.fetch_add(1, Ordering::AcqRel);
-                    self.frames[*idx].ref_bit.store(true, Ordering::Release);
-                    return Ok(PageHandle(page.clone()));
-                }
+            if let Some(page) = slot.as_ref()
+                && page.id == id
+            {
+                page.pin_count.fetch_add(1, Ordering::AcqRel);
+                self.frames[*idx].ref_bit.store(true, Ordering::Release);
+                return Ok(PageHandle(page.clone()));
             }
         }
 

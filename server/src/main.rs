@@ -1,7 +1,11 @@
 use axum::{Router, routing::any};
-use db::{BackgroundWriter, DiskManager, Storage, TransactionManager, buffer_pool::ClockBufferPool};
-use tempfile::tempdir;
-use std::{sync::{Arc, RwLock}, time::Duration};
+use db::{
+    BackgroundWriter, DiskManager, Storage, TransactionManager, buffer_pool::ClockBufferPool,
+};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use tracing::info;
 
 mod socket;
@@ -15,15 +19,10 @@ pub struct AppState {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let dir = tempdir().unwrap();
-
-    let index_path = dir.path().join("index.db");
-    let data_path = dir.path().join("data.db");
-
-    let disk_manager = Arc::new(DiskManager::init(vec![index_path.to_str().unwrap()], vec![data_path.to_str().unwrap()]));
+    let disk_manager = Arc::new(DiskManager::init(vec!["index.db"], vec!["data.db"]));
     let cache = Arc::new(ClockBufferPool::new(64, disk_manager.clone()));
     let store = Arc::new(Storage::new(cache.clone()));
-    let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+    let tx_manager = Arc::new(RwLock::new(TransactionManager::new("transaction_file")));
 
     let background_writer = Arc::new(BackgroundWriter::new(cache.clone(), disk_manager.clone()));
     let _handle = background_writer.start(Duration::from_millis(1000));

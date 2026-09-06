@@ -4,9 +4,7 @@ pub mod data_page;
 
 use std::sync::{
     RwLock,
-    atomic::{
-        AtomicBool, AtomicUsize,
-    },
+    atomic::{AtomicBool, AtomicUsize},
 };
 
 use crate::storage::pages::{

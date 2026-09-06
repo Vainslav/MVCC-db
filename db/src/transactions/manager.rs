@@ -2,36 +2,58 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     storage::Record,
-    transactions::{IsolationLevel, Transaction, TransactionProcessingError, TransactionState},
+    transactions::{
+        IsolationLevel, Transaction, TransactionProcessingError, TransactionState,
+        transaction_file::TransactionFile,
+    },
 };
 
 pub struct TransactionManager {
     transactions: BTreeMap<u32, Transaction>,
     next_transaction_id: u32,
-}
-
-impl Default for TransactionManager {
-    fn default() -> Self {
-        Self::new()
-    }
+    transaction_file: TransactionFile,
 }
 
 impl TransactionManager {
-    pub fn new() -> TransactionManager {
+    pub fn new(path: &str) -> TransactionManager {
+        let mut transaction_file = TransactionFile::open(path).unwrap();
+        let transactions = transaction_file
+            .read_all_commited_transaction()
+            .into_iter()
+            .map(|id| {
+                (
+                    id,
+                    Transaction {
+                        id,
+                        isolation: IsolationLevel::Serializable,
+                        state: TransactionState::Committed,
+                        in_progress: BTreeSet::default(),
+                        writes: BTreeSet::default(),
+                        reads: BTreeSet::default(),
+                    },
+                )
+            })
+            .collect::<BTreeMap<u32, Transaction>>();
         TransactionManager {
-            transactions: BTreeMap::new(),
+            transactions,
             next_transaction_id: 1,
+            transaction_file,
         }
     }
 
-    pub fn new_transaction(&mut self, isolation: IsolationLevel) -> u32 {
+    pub fn new_transaction(
+        &mut self,
+        isolation: IsolationLevel,
+    ) -> Result<u32, TransactionProcessingError> {
         let tx_id = self.next_transaction_id;
         self.next_transaction_id += 1;
 
         let mut tx = Transaction::new(tx_id, isolation);
         tx.in_progress = self.in_progress();
+        self.transaction_file
+            .write_transaction_state(tx_id, TransactionState::InProgress)?;
         self.transactions.insert(tx_id, tx);
-        tx_id
+        Ok(tx_id)
     }
 
     pub fn complete_transaction(
@@ -55,6 +77,8 @@ impl TransactionManager {
         }
 
         let tx_mut = self.transactions.get_mut(&id).unwrap();
+
+        self.transaction_file.write_transaction_state(id, state)?;
 
         tx_mut.state = state;
         Ok(())

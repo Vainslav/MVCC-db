@@ -151,13 +151,11 @@ impl<B: Deref<Target = [u8; PAGE_SIZE]>> BucketPageView<B> {
         if next_page_id == 0 && next_file_id == 0 {
             None
         } else {
-            Some(
-                PageId {
-                    page_num: next_page_id,
-                    file_id: next_file_id,
-                    page_type: PageType::Bucket
-                }
-            )
+            Some(PageId {
+                page_num: next_page_id,
+                file_id: next_file_id,
+                page_type: PageType::Bucket,
+            })
         }
     }
 
@@ -241,7 +239,7 @@ impl<'a> Iterator for BucketChainIter<'a> {
     type Item = io::Result<PageHandle>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self.next_page.clone()?;
+        let next = self.next_page?;
 
         let handle = match self.pool.fetch(next) {
             Ok(h) => h,

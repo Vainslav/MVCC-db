@@ -32,9 +32,8 @@ pub enum CommandExecutionError {
 impl From<TransactionProcessingError> for CommandExecutionError {
     fn from(value: TransactionProcessingError) -> Self {
         match value {
-            TransactionProcessingError::SerializableError => {
-                CommandExecutionError::SerializationError
-            }
+            TransactionProcessingError::SerializableError => Self::SerializationError,
+            TransactionProcessingError::IoError(kind) => Self::IoError(kind),
         }
     }
 }
@@ -65,7 +64,7 @@ impl Connection {
             return Err(CommandExecutionError::TransactionAlreadyActive);
         }
         let mut tx_manager = self.tx_manager.write().unwrap();
-        self.cur_tx = Some(tx_manager.new_transaction(isolation));
+        self.cur_tx = Some(tx_manager.new_transaction(isolation)?);
         Ok(String::new())
     }
 
@@ -155,17 +154,13 @@ impl Connection {
             .unwrap()
             .add_to_write_set(cur_tx, vec![id.clone()]);
 
-        let Some(head) = self
-            .storage
-            .get_record_id_by_key(&id)?
-        else {
+        let Some(head) = self.storage.get_record_id_by_key(&id)? else {
             return Err(CommandExecutionError::NotFound);
         };
 
         match self.find_visible_record(head, cur_tx)? {
             Some(rid) => {
-                self.storage
-                    .delete_record(&rid, cur_tx)?;
+                self.storage.delete_record(&rid, cur_tx)?;
                 Ok(String::new())
             }
             None => Err(CommandExecutionError::NoneVisible),
@@ -245,13 +240,31 @@ fn make_test_storage() -> Arc<Storage> {
 }
 
 #[cfg(test)]
+fn make_test_transaction_manager() -> Arc<RwLock<TransactionManager>> {
+    use crate::storage::disk::DiskManager;
+    use crate::storage::pages::buffer_pool::ClockBufferPool;
+
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+
+    let tx_manager = dir.path().join("tx_manager");
+
+    let tx_manager = TransactionManager::new(tx_manager.to_str().unwrap());
+
+    std::mem::forget(dir);
+
+    tx_manager.into()
+}
+
+#[cfg(test)]
 mod command_tests {
     use super::*;
 
     #[test]
     fn test_begin() {
         let storage = make_test_storage();
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let tx_manager = make_test_transaction_manager();
 
         let mut con = Connection::new(storage, tx_manager);
         execute_command(&mut con, Command::Begin(IsolationLevel::ReadUncommitted)).unwrap();
@@ -266,7 +279,7 @@ mod command_tests {
     #[test]
     fn test_commit() {
         let storage = make_test_storage();
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let tx_manager = make_test_transaction_manager();
 
         let mut con = Connection::new(storage, tx_manager);
         assert!(execute_command(&mut con, Command::Commit).is_err());
@@ -287,7 +300,7 @@ mod command_tests {
     #[test]
     fn test_abort() {
         let storage = make_test_storage();
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let tx_manager = make_test_transaction_manager();
 
         let mut con = Connection::new(storage, tx_manager);
         assert!(execute_command(&mut con, Command::Commit).is_err());
@@ -313,7 +326,7 @@ mod isolation_tests {
     #[test]
     fn test_read_uncommitted() {
         let storage = make_test_storage();
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let tx_manager = make_test_transaction_manager();
 
         let mut con = Connection::new(storage.clone(), tx_manager.clone());
         let mut con2 = Connection::new(storage, tx_manager.clone());
@@ -329,7 +342,7 @@ mod isolation_tests {
     #[test]
     fn test_read_committed() {
         let storage = make_test_storage();
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let tx_manager = make_test_transaction_manager();
 
         let mut con = Connection::new(storage.clone(), tx_manager.clone());
         let mut con2 = Connection::new(storage.clone(), tx_manager.clone());
@@ -404,7 +417,7 @@ mod isolation_tests {
     #[test]
     fn test_repeatable_read() {
         let storage = make_test_storage();
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let tx_manager = make_test_transaction_manager();
 
         let mut con = Connection::new(storage.clone(), tx_manager.clone());
         let mut con2 = Connection::new(storage.clone(), tx_manager.clone());
@@ -484,7 +497,7 @@ mod isolation_tests {
     #[test]
     fn test_serializable() {
         let storage = make_test_storage();
-        let tx_manager = Arc::new(RwLock::new(TransactionManager::new()));
+        let tx_manager = make_test_transaction_manager();
 
         let mut con = Connection::new(storage.clone(), tx_manager.clone());
         let mut con2 = Connection::new(storage.clone(), tx_manager.clone());

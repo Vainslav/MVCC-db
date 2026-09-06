@@ -1,4 +1,11 @@
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering::Relaxed}}, thread::{self, JoinHandle}, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering::Relaxed},
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use crate::{
     DiskManager,
@@ -33,7 +40,7 @@ impl BackgroundWriter {
         Self {
             page_cache,
             disk_manager,
-            shutdown: false.into()
+            shutdown: false.into(),
         }
     }
 
@@ -45,13 +52,14 @@ impl BackgroundWriter {
 fn flush_page(page: &Page, disk_manager: &DiskManager) {
     let _lock = page.data.read().unwrap();
     let old = page.dirty.load(Relaxed);
-    if old {
-        if page
+    if old
+        && page
             .dirty
             .compare_exchange(old, false, Relaxed, Relaxed)
             .is_ok()
-        {
-            disk_manager.write_page(page).expect("Background writer failed :(");
-        }
+    {
+        disk_manager
+            .write_page(page)
+            .expect("Background writer failed :(");
     }
 }

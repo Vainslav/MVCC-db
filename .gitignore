@@ -1,3 +1,7 @@
 Cargo.lock
 
 /target
+
+data.db
+index.db
+transaction_file

@@ -24,7 +24,7 @@ impl FileHeader for DataFileHeader {
     fn write_header_to_file(file: &File, header: &Self) -> io::Result<()> {
         let mut buf = [0u8; DATA_FILE_HEADER_SIZE];
         buf[PAGE_COUNT_RANGE].copy_from_slice(&header.page_count.to_le_bytes());
-        write_at_impl(&file, &buf, 0)
+        write_at_impl(file, &buf, 0)
     }
 
     fn read_header_from_file(file: &File) -> io::Result<Self>
@@ -32,7 +32,7 @@ impl FileHeader for DataFileHeader {
         Self: Sized,
     {
         let mut buf = [0u8; DATA_FILE_HEADER_SIZE];
-        read_exact_at_impl(&file, &mut buf, 0)?;
+        read_exact_at_impl(file, &mut buf, 0)?;
         Ok(DataFileHeader {
             page_count: u16::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),
         })

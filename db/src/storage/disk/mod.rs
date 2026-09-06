@@ -38,17 +38,21 @@ impl DiskManager {
     }
 
     pub fn read_page(&self, page_id: &PageId) -> io::Result<Page> {
-        let PageId { page_num, file_id , page_type} = *page_id;
+        let PageId {
+            page_num,
+            file_id,
+            page_type,
+        } = *page_id;
         let data = match page_type {
             PageType::Bucket => self
                 .index_files
                 .get(file_id as usize)
-                .expect(&format!("invalid file_id: {}", file_id))
+                .unwrap_or_else(|| panic!("invalid file_id: {}", file_id))
                 .read_page(page_num),
             PageType::Data => self
                 .data_files
                 .get(file_id as usize)
-                .expect(&format!("invalid file_id: {}", file_id))
+                .unwrap_or_else(|| panic!("invalid file_id: {}", file_id))
                 .read_page(page_num),
         }?;
 
@@ -74,24 +78,28 @@ impl DiskManager {
         Ok(PageId {
             page_num: data.0,
             file_id,
-            page_type
+            page_type,
         })
     }
 
     pub fn write_page(&self, page: &Page) -> io::Result<()> {
-        let PageId { page_num, file_id, page_type } = page.id;
+        let PageId {
+            page_num,
+            file_id,
+            page_type,
+        } = page.id;
         let page_data_lock = page.data.read().unwrap();
 
         match page_type {
             PageType::Bucket => self
                 .index_files
                 .get(file_id as usize)
-                .expect(&format!("invalid file_id: {}", file_id))
+                .unwrap_or_else(|| panic!("invalid file_id: {}", file_id))
                 .write_page(page_num, &page_data_lock),
             PageType::Data => self
                 .data_files
                 .get(file_id as usize)
-                .expect(&format!("invalid file_id: {}", file_id))
+                .unwrap_or_else(|| panic!("invalid file_id: {}", file_id))
                 .write_page(page_num, &page_data_lock),
         }
     }
@@ -107,7 +115,11 @@ impl DiskManager {
             PageType::Data => self.data_files.len(),
         } - 1) as u16;
 
-        let id = PageId { page_num, file_id, page_type };
+        let id = PageId {
+            page_num,
+            file_id,
+            page_type,
+        };
 
         Page {
             id,
@@ -315,13 +327,13 @@ mod tests {
         assert_eq!(i_data, get_init_page_bytes(PageType::Bucket));
         assert_eq!(d_data, get_init_page_bytes(PageType::Data));
     }
-    
+
     #[test]
     fn test_index_first_page() {
         let dir = tempdir().unwrap();
 
         let index_path = dir.path().join("index.db");
-        
+
         let index_file = DiskFile::<IndexFileHeader>::open(&index_path).unwrap();
 
         assert_eq!(index_file.header.read().unwrap().page_count(), 32);

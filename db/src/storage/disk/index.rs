@@ -31,7 +31,7 @@ impl FileHeader for IndexFileHeader {
         let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
         buf[BUCKET_COUNT_RANGE].copy_from_slice(&header.bucket_count.to_le_bytes());
         buf[PAGE_COUNT_RANGE].copy_from_slice(&header.page_count.to_le_bytes());
-        write_at_impl(&file, &buf, 0)
+        write_at_impl(file, &buf, 0)
     }
 
     fn read_header_from_file(file: &File) -> io::Result<Self>
@@ -39,7 +39,7 @@ impl FileHeader for IndexFileHeader {
         Self: Sized,
     {
         let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
-        read_exact_at_impl(&file, &mut buf, 0)?;
+        read_exact_at_impl(file, &mut buf, 0)?;
         Ok(IndexFileHeader {
             bucket_count: u32::from_le_bytes(buf[BUCKET_COUNT_RANGE].try_into().unwrap()),
             page_count: u16::from_le_bytes(buf[PAGE_COUNT_RANGE].try_into().unwrap()),

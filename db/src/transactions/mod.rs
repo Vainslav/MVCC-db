@@ -1,6 +1,10 @@
-use std::collections::BTreeSet;
+use std::{
+    collections::BTreeSet,
+    io::{self, ErrorKind},
+};
 
 pub mod manager;
+mod transaction_file;
 
 #[derive(Debug, PartialEq)]
 pub enum IsolationLevel {
@@ -10,11 +14,23 @@ pub enum IsolationLevel {
     Serializable,
 }
 
-#[derive(Debug, PartialEq)]
+#[repr(u8)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TransactionState {
     InProgress,
     Aborted,
     Committed,
+}
+
+impl From<u8> for TransactionState {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => TransactionState::InProgress,
+            1 => TransactionState::Aborted,
+            2 => TransactionState::Committed,
+            _ => panic!("Invalid TransactionState value {}", value),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -48,4 +64,11 @@ impl Transaction {
 #[derive(PartialEq, Debug)]
 pub enum TransactionProcessingError {
     SerializableError,
+    IoError(ErrorKind),
+}
+
+impl From<io::Error> for TransactionProcessingError {
+    fn from(value: io::Error) -> Self {
+        Self::IoError(value.kind())
+    }
 }
