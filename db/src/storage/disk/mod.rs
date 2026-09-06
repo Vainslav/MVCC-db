@@ -222,7 +222,6 @@ trait FileHeader {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::pages::bucket_page::get_bucket_page_init_bytes;
 
     use super::*;
 

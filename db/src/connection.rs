@@ -241,8 +241,7 @@ fn make_test_storage() -> Arc<Storage> {
 
 #[cfg(test)]
 fn make_test_transaction_manager() -> Arc<RwLock<TransactionManager>> {
-    use crate::storage::disk::DiskManager;
-    use crate::storage::pages::buffer_pool::ClockBufferPool;
+    use std::sync::Arc;
 
     use tempfile::tempdir;
 
@@ -254,7 +253,7 @@ fn make_test_transaction_manager() -> Arc<RwLock<TransactionManager>> {
 
     std::mem::forget(dir);
 
-    tx_manager.into()
+    Arc::new(RwLock::new(tx_manager))
 }
 
 #[cfg(test)]

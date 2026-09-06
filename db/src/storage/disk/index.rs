@@ -66,21 +66,13 @@ mod tests {
 
     use std::io::{Read, Write};
 
-    use tempfile::NamedTempFile;
-
     use super::*;
-
-    fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-        unsafe {
-            ::core::slice::from_raw_parts((p as *const T) as *const u8, ::core::mem::size_of::<T>())
-        }
-    }
 
     #[test]
     fn test_read_header_from_file() {
         let mut file = tempfile::tempfile().unwrap();
 
-        file.write(&[0u8; INDEX_FILE_HEADER_SIZE]);
+        let _ = file.write(&[0u8; INDEX_FILE_HEADER_SIZE]).unwrap();
 
         let header = IndexFileHeader::read_header_from_file(&file).unwrap();
 
@@ -97,7 +89,7 @@ mod tests {
 
         let mut buf = [0u8; INDEX_FILE_HEADER_SIZE];
 
-        file.read(&mut buf).unwrap();
+        let _ = file.read(&mut buf).unwrap();
 
         assert_eq!([0u8; INDEX_FILE_HEADER_SIZE], buf);
     }
